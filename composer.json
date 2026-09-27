@@ -1,0 +1,31 @@
+{
+    "name": "evedev/seat-indus-planner",
+    "description": "SeAT industry tools: industrial structure setup, reaction and manufacturing planning with production plans.",
+    "type": "library",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "EveDev"
+        }
+    ],
+    "require": {
+        "php": "^8.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "EveDev\\Seat\\IndusPlanner\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "EveDev\\Seat\\IndusPlanner\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "EveDev\\Seat\\IndusPlanner\\IndusPlannerServiceProvider"
+            ]
+        }
+    }
+}

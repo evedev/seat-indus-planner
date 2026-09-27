@@ -1,0 +1,393 @@
+/*
+ * This file is part of seat-indus-planner.
+ * Copyright (C) 2026 EveDev
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+/* Indus Planner: styles of the industry tools. */
+
+.indus-suggestions {
+  position: absolute;
+  z-index: 1050;
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+}
+
+/* -------------------------------------------------------------- Tree */
+
+.indus-tree-scroll {
+  overflow: auto;
+  max-height: 72vh;
+  border: 1px solid rgba(128, 128, 128, .25);
+  border-radius: 4px;
+  background: #1f2330;
+}
+
+.indus-tree {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 60px;
+  padding: 8px 12px;
+  min-height: 200px;
+  width: max-content;
+}
+
+.indus-tree.loading { opacity: .5; }
+
+.indus-links {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.indus-column {
+  position: relative;
+  z-index: 1;
+  width: 388px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Column header stuck to the top of the tree area while scrolling
+   vertically; its background hides the cards passing under it. */
+.indus-column-title {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin-top: -8px;
+  padding: 6px 0 4px;
+  background: #1f2330;
+  border-bottom: 1px solid rgba(142, 207, 255, .25);
+  text-align: center;
+  color: #8ecfff;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.indus-column-cards {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Item family: discreet title, tight cards. */
+.indus-card-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.indus-card-group-title {
+  color: #9aa6b8;
+  font-size: .68rem;
+  line-height: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 1px solid rgba(154, 166, 184, .3);
+}
+
+/* Totals pill: one line, in the dark colors of the tree. */
+.indus-column-totals {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #2a3040;
+  border: 1px solid #44475a;
+  border-radius: 4px;
+  color: #c8d4e0;
+  font-size: .75rem;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.indus-column-totals b { color: #fff; font-weight: 500; }
+
+/* Compact card: icon height (40 px) + 4 px. */
+.indus-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 388px;
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0 3px 0 1px;
+  border: 1.5px solid;
+  border-radius: 4px;
+  color: #fff;
+  font-size: .72rem;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.indus-card.mode-buy { opacity: .78; }
+
+/* Card hover: its chain (ancestors, descendants) stays sharp, the rest of
+   the tree fades out. */
+.indus-card { transition: opacity .12s, box-shadow .12s; }
+.indus-tree.indus-hovering .indus-card:not(.related) { opacity: .18; }
+.indus-tree.indus-hovering .indus-card.related { opacity: 1; box-shadow: 0 0 0 1px rgba(142, 207, 255, .6), 0 0 10px rgba(142, 207, 255, .55); }
+.indus-tree.indus-hovering .indus-card.hovered { box-shadow: 0 0 0 2px #8ecfff, 0 0 14px rgba(142, 207, 255, .8); }
+/* Highlight pinned by a click: golden outline. */
+.indus-tree.indus-hovering .indus-card.pinned { box-shadow: 0 0 0 2px #f5c542, 0 0 14px rgba(245, 197, 66, .8); }
+.indus-card { cursor: pointer; }
+.indus-tree.indus-hovering .indus-card-group-title { opacity: .35; }
+.indus-links line { transition: opacity .12s, stroke-width .12s; }
+.indus-links.indus-hovering line { opacity: .08; }
+.indus-links.indus-hovering line.related { opacity: 1; stroke-width: 3; }
+
+.indus-card-icon { flex: none; }
+
+.indus-card-icon img {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, .25);
+}
+
+.indus-card-body { flex: 1; min-width: 0; }
+
+.indus-card-name {
+  font-weight: bold;
+  font-size: .85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Yellow: the item itself can be produced. */
+.indus-card-name.producible { color: #e0d000; }
+
+.indus-card-line {
+  color: #c8d4e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.indus-card-line b { color: #fff; }
+
+/* Right column: mode badge at the top, blueprint at the bottom. */
+.indus-card-side {
+  flex: 0 0 18px;
+  height: 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.indus-card-mode {
+  height: 15px;
+  line-height: 15px;
+  text-align: center;
+  font-weight: bold;
+  font-size: .72rem;
+  border-radius: 3px;
+  background: #226622;
+  color: #88ff88;
+  cursor: pointer;
+  user-select: none;
+}
+
+.indus-bp-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 15px;
+  border-radius: 3px;
+  font-size: .62rem;
+}
+
+.indus-bp-icon.bpo { background: #1d4a8a; color: #b5d4f4; }
+.indus-bp-icon.bpc { background: #0f5e56; color: #9fe1cb; }
+.indus-bp-icon.missing { background: #882222; color: #ffaaaa; }
+
+.indus-card-mode.buy { background: #882222; color: #ffaaaa; }
+.indus-card-mode.locked { cursor: default; }
+
+.indus-badge-produce, .indus-badge-buy { padding: 0 4px; border-radius: 3px; font-weight: bold; }
+.indus-badge-produce { background: #226622; color: #88ff88; }
+.indus-badge-buy { background: #882222; color: #ffaaaa; }
+
+.indus-menu { z-index: 2000; }
+
+/* ----------------------------------------------------------- Summary */
+
+.indus-summary-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 992px) {
+  .indus-summary-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.indus-tile {
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 10px 14px;
+  cursor: help;
+}
+
+.indus-tile-label { font-size: .8rem; color: #6c757d; }
+.indus-tile-value { font-size: 1.45rem; font-weight: 500; line-height: 1.3; color: #212529; white-space: nowrap; }
+.indus-tile-sub { font-size: .78rem; color: #6c757d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Share of purchases and jobs in the total cost. */
+.indus-tile-bar {
+  display: flex;
+  height: 6px;
+  margin: 4px 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #e9ecef;
+}
+
+.indus-tile-bar .purchases, .indus-dot.purchases { background: #378add; }
+.indus-tile-bar .jobs, .indus-dot.jobs { background: #ef9f27; }
+
+.indus-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  border-radius: 2px;
+}
+
+/* Margin: green border and value when positive, red when negative. */
+.indus-tile.pos { border: 2px solid #28a745; }
+.indus-tile.pos .indus-tile-value { color: #1a7a3a; }
+.indus-tile.neg { border: 2px solid #dc3545; }
+.indus-tile.neg .indus-tile-value { color: #aa1111; }
+
+/* Tree / Production plan tabs (Reactions, Production, saved plans). */
+.indus-tool > .card-header .nav-tabs .nav-link { font-size: 1.2rem; font-weight: 700; }
+
+/* --------------------------------------------------- Production plan */
+
+.indus-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.indus-plan-title { font-weight: bold; font-size: 1.1rem; color: #3c8dbc; flex: 1; }
+
+.indus-section {
+  border: 1px solid rgba(128, 128, 128, .3);
+  border-radius: 3px;
+  margin-bottom: 6px;
+  overflow-x: auto;
+}
+
+.indus-section-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 34px;
+  padding: 4px 8px;
+  color: #e8ecf5;
+  cursor: pointer;
+  user-select: none;
+}
+
+.indus-section-title { color: #fff; font-weight: bold; font-size: 1rem; }
+.indus-section.collapsed table { display: none; }
+
+/* Widths set by <colgroup>: same columns from one section to the next. */
+.indus-plan-table { table-layout: fixed; width: 100%; min-width: 760px; }
+.indus-plan-table th, .indus-plan-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.indus-plan-table td.name img { width: 22px; height: 22px; }
+.indus-plan-table.compact { font-size: .78rem; }
+.indus-plan-table.compact td, .indus-plan-table.compact th { padding: .1rem .3rem; }
+.indus-plan-table.compact td.name img { width: 16px; height: 16px; }
+.indus-plan-table tr.done td { color: #7a7a7a !important; }
+.indus-plan-table tr.done td.name { text-decoration: line-through; }
+.indus-plan-table th.sorted-asc::after { content: ' ▴'; }
+.indus-plan-table th.sorted-desc::after { content: ' ▾'; }
+
+.indus-plan-summary { font-weight: bold; margin: 4px; }
+
+.indus-bp { font-size: .75rem; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
+.indus-bp.ok { background: #d8f5d8; color: #1a6a1a; }
+.indus-bp.missing { background: #fbdcd6; color: #9a2a10; }
+
+.indus-structures td { vertical-align: middle; }
+
+/* ------------------------------------------------------- Saved plans */
+
+.indus-save-bar { max-width: 420px; }
+
+/* Generic progress bar (plan list, header, tables). */
+.indus-progress {
+  flex: 1;
+  height: 6px;
+  min-width: 40px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #e9ecef;
+}
+
+.indus-progress > div { height: 100%; background: #378add; }
+.indus-progress > div.done { background: #28a745; }
+
+.indus-plan-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.indus-plan-row:last-child { border-bottom: 0; }
+.indus-plan-row img { border-radius: 4px; }
+.min-w-0 { min-width: 0; }
+
+/* Saved plan card: done = greyed out with a check mark, bar at the bottom. */
+.indus-card { position: relative; }
+.indus-card.done { opacity: .5; }
+
+.indus-card-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 0;
+  background: #85b7eb;
+}
+
+.indus-card-progress.done { background: #97c459; }
+.indus-card-track { color: #a8f0a8; }
+.indus-card-mode.done { background: #3b6d11; color: #eaf3de; cursor: default; }
+
+/* Counter of runs started / quantity bought: bar, field and target on a
+   fixed-column grid, so they stay aligned from one row to the next whatever
+   the number of digits of the target. */
+.indus-counter-cell {
+  display: grid;
+  grid-template-columns: 1fr 76px 54px;
+  align-items: center;
+  gap: 6px;
+}
+
+.indus-counter { width: 76px; height: 24px; padding: 0 4px; text-align: right; }
+.indus-counter-target { white-space: nowrap; }
+/* In the counter grid, the bar column may be narrower than the usual
+   min-width (40px): do not force an overflow. */
+.indus-counter-cell .indus-progress { min-width: 0; }
+.indus-track-table td { vertical-align: middle; }
