@@ -179,7 +179,7 @@ class Planner
     /**
      * Simulates a reaction chain (Reactions tool).
      *
-     * @param  array{character_id:?int, structure_id:?string, type_id:int, qty_mode:string, qty:int, runs:int, overrides:array}  $input
+     * @param  array{character_id:?int, structure_id:?string, type_id:int, qty_mode:string, qty:int, runs:int, overrides:array, buy?:string[]}  $input
      */
     public function reaction(array $input): ?array
     {
@@ -205,7 +205,7 @@ class Planner
         $result = Calculator::reaction($formula, $structure, $runs, $skill, 0.0, $adjusted);
         $manager = $this->manager();
         $overrides = $this->overrides($input['overrides'] ?? []);
-        $tree = $manager->buildProductionTree($result, $desired, $adjusted, true, $overrides);
+        $tree = $manager->buildProductionTree($result, $desired, $adjusted, true, $overrides, buyKeys: $this->buyKeys($input['buy'] ?? []));
 
         return $this->payload($result, $tree, $manager, $overrides);
     }
@@ -213,7 +213,7 @@ class Planner
     /**
      * Simulates a manufacturing order (Production tool).
      *
-     * @param  array{character_id:?int, type_id:int, qty:int, me:int, te:int, include_reactions:bool, overrides:array}  $input
+     * @param  array{character_id:?int, type_id:int, qty:int, me:int, te:int, include_reactions:bool, overrides:array, buy?:string[]}  $input
      */
     public function production(array $input): ?array
     {
@@ -238,7 +238,7 @@ class Planner
         $tree = $manager->buildProductionTree($result, $desired, $adjusted, $includeReactions, $overrides, [
             'manufacturing' => $skill,
             'reaction' => $this->skillReduction($input['character_id'] ?? null, Constants::REACTION_TIME_SKILLS),
-        ]);
+        ], $this->buyKeys($input['buy'] ?? []));
 
         return $this->payload($result, $tree, $manager, $overrides);
     }
@@ -302,6 +302,12 @@ class Planner
         $labels = trans('indus-planner::plan');
 
         return is_array($labels) ? $labels : [];
+    }
+
+    /** @return string[] well-formed "rank:type_id" keys of the bought nodes */
+    private function buyKeys(array $raw): array
+    {
+        return array_values(array_filter(array_map('strval', $raw), fn ($key) => preg_match('/^\d+:\d+$/', $key) === 1));
     }
 
     /** @return array<int,string> structure choices limited to the selected structures */

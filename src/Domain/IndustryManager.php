@@ -118,6 +118,8 @@ final class IndustryManager
      * @param  array<int,float>|null  $adjustedPrices
      * @param  array<int,string>  $overrides  explicit structure choices
      * @param  array<string,float>  $timeSkills  {'manufacturing': x, 'reaction': y}
+     * @param  string[]  $buyKeys  "rank:type_id" of the nodes the user buys: their
+     *                             materials are neither expanded nor counted
      */
     public function buildProductionTree(
         SimulationResult $result,
@@ -126,8 +128,10 @@ final class IndustryManager
         bool $includeReactions = true,
         array $overrides = [],
         array $timeSkills = [],
+        array $buyKeys = [],
     ): TreeData {
         $prices = $adjustedPrices ?? [];
+        $bought = array_fill_keys($buyKeys, true);
         $rootTypeId = $result->outputTypeId();
 
         $output = new TreeItem(
@@ -177,7 +181,7 @@ final class IndustryManager
             if (! $includeReactions && $this->isReactable($item->typeId) && ! $this->isManufacturable($item->typeId))
                 $rank1InitiallyBuy[] = $item->typeId;
 
-            if ($item->isReactionOutput && $item->runs > 0)
+            if ($item->isReactionOutput && $item->runs > 0 && ! isset($bought['1:' . $item->typeId]))
                 $pending[$item->typeId] = $item;
         }
 
@@ -227,7 +231,9 @@ final class IndustryManager
             foreach ($nextPending as $typeId => $_) {
                 $visited[$typeId] = true;
             }
-            $pending = array_filter($nextPending, fn (TreeItem $i) => $i->isReactionOutput && $i->runs > 0);
+            $rank = $depth + 2;
+            $pending = array_filter($nextPending, fn (TreeItem $i) => $i->isReactionOutput && $i->runs > 0
+                && ! isset($bought[$rank . ':' . $i->typeId]));
         }
 
         return new TreeData($output, $rank1, $subItems, $rank1InitiallyBuy);

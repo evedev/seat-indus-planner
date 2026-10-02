@@ -22,6 +22,7 @@
   const LANG = window.IndusPlannerLang || { locale: 'en', texts: {} };
   const LOCALE = LANG.locale || 'en';
   const DASH = '—';
+  const BOUGHT_MARK = '/';
   const NBSP = ' ';
 
   // Translated text; `:name` placeholders are replaced by `params.name`.
@@ -179,6 +180,7 @@
       this.linkColor = linkColor;
       this.onChange = callbacks.onChange;
       this.onStructure = callbacks.onStructure;
+      this.onModeChange = callbacks.onModeChange || null;
       // Saved plan: frozen tree (no switch, no menu) and the progress of
       // every card given by `progressFor(card)`.
       this.readOnly = !!callbacks.readOnly;
@@ -193,6 +195,7 @@
     }
 
     clear(message) {
+      this.hideTip();
       this.columns = [];
       this.payload = null;
       this.pool = new Map();
@@ -209,6 +212,7 @@
     // automatically (item that cannot be produced, excluded reaction) are
     // never remembered.
     render(payload) {
+      this.hideTip();
       const previousRoot = this.payload ? this.payload.tree.output.type_id : null;
       this.payload = payload;
       const tree = payload.tree;
@@ -329,8 +333,19 @@
       // Hover: highlights the card chain (ancestors and descendants).
       // Click: pins the highlight; another click on the same card goes back
       // to the normal display (a click on another card pins that one).
-      el.addEventListener('mouseenter', () => { if (!this.pinned) this.highlight(el._card); });
-      el.addEventListener('mouseleave', () => { if (!this.pinned) this.highlight(null); });
+      el.addEventListener('mouseenter', (e) => {
+        if (!this.pinned) this.highlight(el._card);
+        this.showTip(el._card, e);
+      });
+      // A re-render (mode switch) hides the bubble: it comes back, updated,
+      // on the next move.
+      el.addEventListener('mousemove', (e) => {
+        if (Tree.tip && Tree.tip.style.display === 'block') this.moveTip(e); else this.showTip(el._card, e);
+      });
+      el.addEventListener('mouseleave', () => {
+        if (!this.pinned) this.highlight(null);
+        this.hideTip();
+      });
       el.addEventListener('click', () => {
         const card = el._card;
         if (!card || !card.active) return;
@@ -342,6 +357,7 @@
         }
       });
       el.addEventListener('contextmenu', (e) => {
+        this.hideTip();
         const card = el._card;
         if (!card || card.locked || this.readOnly) return;
         e.preventDefault();
@@ -370,7 +386,6 @@
       // and the blueprint state at the bottom.
       const produced = item.runs > 0;
       const bp = produced ? blueprintLabel(this.payload.blueprints[item.type_id]) : null;
-      const value = (v) => '<b>' + v + '</b>';
       const img = el.querySelector('img');
       const src = icon(item.type_id, 64);
       if (img.getAttribute('src') !== src) img.setAttribute('src', src);
@@ -378,42 +393,86 @@
       const name = el.querySelector('.indus-card-name');
       name.textContent = item.name;
       name.classList.toggle('producible', !!item.is_reaction_output);
-      el.querySelector('.indus-card-line').innerHTML =
-        escapeHtml(t('card_needed')) + ' ' + value(compact(item.qty_total)) +
-        ' · ' + escapeHtml(t('card_produced')) + ' ' + value(produced ? compact(item.qty_produced || item.qty_total + item.surplus) : DASH) +
-        ' · ' + escapeHtml(t('card_runs')) + ' ' + value(produced ? compact(item.runs) : DASH) +
-        ' · ' + escapeHtml(t('card_surplus')) + ' ' + value(produced && item.surplus ? compact(item.surplus) : DASH);
       el.querySelector('.indus-card-mode').classList.toggle('locked', locked);
       el.querySelector('.indus-card-bp-slot').innerHTML = bp ? blueprintIcon(bp) : '';
-      el.title = this.tooltip(item, bp);
+      card.bp = bp;
+      el.removeAttribute('title');
 
       card.el = el;
       return card;
     }
 
-    tooltip(item, bp) {
+    // Hover bubble of a card: header (icon, name, need and production),
+    // stock gauge, total prices, then production place and logistics. A
+    // bought card shows no production figures, like its quantities line.
+    tooltipHtml(card) {
+      const item = card.item;
       const p = this.payload.prices[item.type_id] || {};
       const qty = item.qty_total;
+      const producing = item.runs > 0 && card.mode !== MODE_BUY;
       const isk = (v) => (v ? formatNumber(v) + ' ISK' : t('not_available'));
-      const lines = [item.name, t('tip_needed', { qty: formatNumber(qty) })];
-      if (item.runs > 0) {
-        lines.push(t('tip_produced', { qty: formatNumber(item.qty_produced || item.qty_total + item.surplus) }));
-        lines.push(t('tip_runs', { runs: formatNumber(item.runs) }));
-        lines.push(t('tip_surplus', { qty: formatNumber(item.surplus) }));
-        if (item.structure_name) lines.push(t('tip_structure', { name: item.structure_name }));
-        if (item.time_seconds) lines.push(t('tip_duration', { duration: formatDuration(item.time_seconds) }));
-      }
-      lines.push(t('tip_jita_buy', { isk: isk((p.jita_buy || 0) * qty) }));
-      lines.push(t('tip_jita_sell', { isk: isk((p.jita_sell || 0) * qty) }));
-      lines.push(t('tip_average', { isk: isk((p.average || 0) * qty) }));
-      lines.push(t('tip_adjusted', { isk: isk((p.adjusted || 0) * qty) }));
-      const volume = (item.volume || 0) * qty;
-      lines.push(t('tip_volume', { volume: volume ? formatNumber(volume, 2) + ' m³' : t('not_available') }));
+      const row = (label, value) => '<div class="indus-tip-row"><span>' + escapeHtml(label) + '</span><b>' + escapeHtml(value) + '</b></div>';
+      const summary = producing
+        ? t('tip_summary_produced', { need: formatNumber(qty), runs: formatNumber(item.runs), produced: formatNumber(item.qty_produced || item.qty_total + item.surplus) })
+        : t('tip_summary_need', { need: formatNumber(qty) });
+
+      let html = '<div class="indus-tip-head"><img src="' + icon(item.type_id, 64) + '" width="32" height="32" alt="">' +
+        '<div><div class="indus-tip-name">' + escapeHtml(item.name) + '</div><div class="indus-tip-sub">' + escapeHtml(summary) + '</div></div></div>';
+
       if (this.payload.stock_known) {
-        lines.push(t('tip_stock', { qty: formatNumber(this.payload.stock[item.type_id] || 0) }));
+        const stock = this.payload.stock[item.type_id] || 0;
+        const ratio = qty > 0 ? Math.min(1, stock / qty) : 1;
+        html += '<div class="indus-tip-sec"><div class="indus-tip-label">' +
+          escapeHtml(t('tip_stock', { qty: formatNumber(stock), need: formatNumber(qty) })) + '</div>' +
+          '<div class="indus-tip-bar' + (ratio >= 1 ? ' full' : '') + '"><i style="width:' + Math.round(ratio * 100) + '%"></i></div></div>';
       }
-      if (bp) lines.push(t('tip_blueprint', { text: bp.text }));
-      return lines.join('\n');
+
+      html += '<div class="indus-tip-sec"><div class="indus-tip-label">' + escapeHtml(t('tip_prices')) + '</div>' +
+        row(t('tip_jita_buy'), isk((p.jita_buy || 0) * qty)) +
+        row(t('tip_jita_sell'), isk((p.jita_sell || 0) * qty)) +
+        row(t('tip_average'), isk((p.average || 0) * qty)) +
+        row(t('tip_adjusted'), isk((p.adjusted || 0) * qty)) + '</div>';
+
+      let details = '';
+      if (producing) {
+        details += row(t('tip_surplus'), formatNumber(item.surplus));
+        if (item.structure_name) details += row(t('tip_structure'), item.structure_name);
+        if (item.time_seconds) details += row(t('tip_duration'), formatDuration(item.time_seconds));
+      }
+      const volume = (item.volume || 0) * qty;
+      details += row(t('tip_volume'), volume ? formatNumber(volume, 2) + ' m³' : t('not_available'));
+      if (card.bp) details += row(t('tip_blueprint'), card.bp.text);
+      return html + '<div class="indus-tip-sec">' + details + '</div>';
+    }
+
+    // One bubble for the whole page, placed next to the cursor and kept
+    // inside the window.
+    showTip(card, e) {
+      if (!card || !card.active || !this.payload) return;
+      if (!Tree.tip) {
+        Tree.tip = document.createElement('div');
+        Tree.tip.className = 'indus-tip';
+        document.body.appendChild(Tree.tip);
+      }
+      Tree.tip.innerHTML = this.tooltipHtml(card);
+      Tree.tip.style.display = 'block';
+      this.moveTip(e);
+    }
+
+    moveTip(e) {
+      const tip = Tree.tip;
+      if (!tip || tip.style.display !== 'block') return;
+      const gap = 16;
+      let x = e.clientX + gap;
+      let y = e.clientY + gap;
+      if (x + tip.offsetWidth > window.innerWidth - 8) x = e.clientX - gap - tip.offsetWidth;
+      if (y + tip.offsetHeight > window.innerHeight - 8) y = e.clientY - gap - tip.offsetHeight;
+      tip.style.left = Math.max(8, x) + 'px';
+      tip.style.top = Math.max(8, y) + 'px';
+    }
+
+    hideTip() {
+      if (Tree.tip) Tree.tip.style.display = 'none';
     }
 
     // Groups the cards of a column by item family (hence by color): produced
@@ -466,8 +525,24 @@
       this.columns.push({ el: colEl, cards, totals, isProducts, buy: 0, sell: 0, runs: 0 });
     }
 
+    // Quantities line: a bought card keeps its need only, the production
+    // figures are replaced by BOUGHT_MARK.
+    renderLine(card) {
+      const item = card.item;
+      const produced = item.runs > 0;
+      const bought = card.mode === MODE_BUY;
+      const value = (v) => '<b>' + v + '</b>';
+      const figure = (show, v) => value(bought ? BOUGHT_MARK : (show ? v : DASH));
+      card.el.querySelector('.indus-card-line').innerHTML =
+        escapeHtml(t('card_needed')) + ' ' + value(compact(item.qty_total)) +
+        ' · ' + escapeHtml(t('card_produced')) + ' ' + figure(produced, compact(item.qty_produced || item.qty_total + item.surplus)) +
+        ' · ' + escapeHtml(t('card_runs')) + ' ' + figure(produced, compact(item.runs)) +
+        ' · ' + escapeHtml(t('card_surplus')) + ' ' + figure(produced && item.surplus, compact(item.surplus));
+    }
+
     paintCard(card) {
       card.el.style.display = card.active ? '' : 'none';
+      this.renderLine(card);
       // A family whose cards are all hidden disappears too.
       if (card.groupEl) {
         const visible = Array.from(card.groupEl.querySelectorAll('.indus-card')).some((el) => el.style.display !== 'none');
@@ -518,7 +593,11 @@
       this.propagate(card);
       this.refreshTotals();
       this.drawLinks();
-      this.onChange();
+      // The quantities of the shared materials depend on the modes: the
+      // server recomputes them, the local update above only gives an
+      // immediate feedback.
+      if (this.onModeChange) this.onModeChange();
+      else this.onChange();
     }
 
     // Recursively hides or shows the descendants according to the mode of
@@ -566,6 +645,10 @@
 
     drawLinks() {
       if (!this.svg || !this.columns.length) return;
+      // Collapse the reused layer first: its previous size counts in the
+      // container's scroll size and would keep a smaller tree as large.
+      this.svg.setAttribute('width', 0);
+      this.svg.setAttribute('height', 0);
       const box = this.container.getBoundingClientRect();
       this.svg.setAttribute('width', this.container.scrollWidth);
       this.svg.setAttribute('height', this.container.scrollHeight);
@@ -1084,6 +1167,7 @@
       this.tree = new Tree(document.getElementById('indus-tree'), linkColor, {
         onChange: () => { updateSummary(this.tree, this.planData); this.refreshPlan(); this.saveState(); },
         onStructure: (typeId, structureId) => { this.overrides[typeId] = structureId; this.compute(); },
+        onModeChange: () => this.compute(),
       });
       this.plan = new PlanView(name, document.getElementById('indus-jobs'), document.getElementById('indus-purchases'),
         document.getElementById('indus-plan-tab-title'));
@@ -1145,6 +1229,12 @@
       try { localStorage.setItem(this.storageKey, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
     }
 
+    // New final product: structure and buy/produce choices start over.
+    resetChoices() {
+      this.overrides = {};
+      this.tree.userModes = new Map();
+    }
+
     restoreChoices(state) {
       this.overrides = (state && state.overrides) || {};
       this.tree.userModes = new Map((state && state.userModes) || []);
@@ -1178,6 +1268,7 @@
         return;
       }
       params.overrides = this.overrides;
+      params.buy = Array.from(this.tree.userModes || []).filter(([, mode]) => mode === MODE_BUY).map(([key]) => key);
       const seq = ++this.seq;
       this.post(this.cfg.computeUrl, params).then((payload) => {
         if (seq !== this.seq) return;
@@ -1243,11 +1334,11 @@
 
     $('p-type').addEventListener('change', () => {
       loadReactions().then(() => {
-        tool.overrides = {};
+        tool.resetChoices();
         tool.compute();
       });
     });
-    $('p-reaction').addEventListener('change', () => { tool.overrides = {}; tool.compute(); });
+    $('p-reaction').addEventListener('change', () => { tool.resetChoices(); tool.compute(); });
     ['p-character', 'p-structure'].forEach((id) => $(id).addEventListener('change', () => tool.compute()));
     ['p-qty', 'p-runs'].forEach((id) => $(id).addEventListener('input', () => tool.schedule()));
     document.querySelectorAll('input[name="p-mode"]').forEach((r) => r.addEventListener('change', () => { syncMode(); tool.compute(); }));
@@ -1324,7 +1415,7 @@
       selected = item;
       input.value = item.name;
       suggestions.innerHTML = '';
-      tool.overrides = {};
+      tool.resetChoices();
       prefill(item.id).then(() => tool.compute());
     };
 

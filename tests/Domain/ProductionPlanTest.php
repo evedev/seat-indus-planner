@@ -158,6 +158,16 @@ class ProductionPlanTest extends TestCase
         $this->assertSame([self::FINAL], array_column($jobs, 'type_id'));
     }
 
+    public function test_bought_node_materials_are_not_expanded(): void
+    {
+        $manager = $this->manager();
+        $result = Calculator::manufacturing($manager->blueprints[self::FINAL], null, 2);
+        $produced = $manager->buildProductionTree($result, 2);
+        $bought = $manager->buildProductionTree($result, 2, buyKeys: ['1:' . self::COMPONENT]);
+        $this->assertArrayHasKey(self::COMPONENT, $produced->subItems);
+        $this->assertArrayNotHasKey(self::COMPONENT, $bought->subItems);
+    }
+
     public function test_same_article_is_grouped_on_one_line(): void
     {
         [, $tree] = $this->simulate();

@@ -327,7 +327,40 @@
 .indus-bp.ok { background: #d8f5d8; color: #1a6a1a; }
 .indus-bp.missing { background: #fbdcd6; color: #9a2a10; }
 
-.indus-structures td { vertical-align: middle; }
+.indus-structures { font-size: .8125rem; }
+.indus-structures td { vertical-align: middle; white-space: nowrap; }
+.indus-structures-scroll { overflow: auto; border-top: 1px solid rgba(128, 128, 128, .25); }
+/* Separate borders: with collapsed ones the sticky header lets the rows show
+   through a one pixel gap while scrolling. */
+.indus-structures { border-collapse: separate; border-spacing: 0; }
+.indus-structures thead { position: sticky; top: 0; z-index: 2; }
+.indus-structures thead th { background: #fff; border-top: 0; border-bottom: 0; box-shadow: inset 0 -1px 0 rgba(128, 128, 128, .4); }
+.dark-mode .indus-structures thead th { background: #343a40; }
+.indus-structures [data-sort-col] { cursor: pointer; user-select: none; white-space: nowrap; }
+.indus-structures [data-sort-col] .indus-th-label::after { content: '\f0dc'; font-family: 'Font Awesome 5 Free'; font-weight: 900; margin-left: .35rem; opacity: .3; }
+.indus-structures [data-sort-col].sort-asc .indus-th-label::after { content: '\f0de'; opacity: .9; }
+.indus-structures [data-sort-col].sort-desc .indus-th-label::after { content: '\f0dd'; opacity: .9; }
+.indus-filter-btn { border: 0; background: none; color: inherit; padding: 0 .2rem; margin-left: .35rem; font-size: .7rem; line-height: 1; opacity: .3; cursor: pointer; vertical-align: baseline; }
+.indus-filter-btn:hover, .indus-filter-btn.open { opacity: .8; }
+.indus-filter-btn.active { opacity: 1; color: #3c8dbc; }
+.indus-ms-menu .indus-ms-max { display: flex; align-items: center; gap: .4rem; padding: .3rem .6rem; }
+.indus-ms-menu .indus-ms-max input { width: 90px; }
+.indus-ms-menu .indus-ms-max input.indus-ms-text { width: 220px; }
+.indus-structures td[data-column="use"] input[type="checkbox"] { width: 18px; height: 18px; margin: 0; vertical-align: middle; cursor: pointer; }
+.indus-help { font-size: .9rem; cursor: help; margin-left: .25rem; }
+.indus-help-tooltip .tooltip-inner { max-width: 420px; text-align: left; }
+.indus-ms-menu { position: fixed; z-index: 1060; max-height: 320px; overflow-y: auto; min-width: 180px; padding: .25rem 0; font-size: .8125rem; }
+.indus-ms-menu .indus-ms-tools { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem; padding: .1rem .6rem .35rem; border-bottom: 1px solid rgba(128, 128, 128, .25); margin-bottom: .25rem; }
+.indus-ms-menu label { display: flex; align-items: center; gap: .45rem; margin: 0; padding: .2rem .8rem; font-weight: normal; cursor: pointer; white-space: nowrap; }
+.indus-ms-menu label:hover { background: rgba(128, 128, 128, .15); }
+.indus-structures tbody tr.odd { background-color: rgba(128, 128, 128, .08); }
+
+.indus-sources { display: flex; flex-wrap: wrap; align-items: stretch; gap: 1rem 3rem; }
+.indus-sources-section { display: flex; flex-direction: column; }
+.indus-sources-section > .indus-sources { flex: 1; }
+.indus-sources [data-check-group] { display: flex; flex-direction: column; }
+.indus-sources-note { margin-top: auto; padding-top: .6rem; max-width: 260px; line-height: 1.3; }
+.indus-check-buttons { display: inline-grid; grid-template-columns: 1fr 1fr; gap: .25rem; align-self: flex-start; margin-top: auto; padding-top: .6rem; white-space: nowrap; }
 
 /* ------------------------------------------------------- Saved plans */
 
@@ -391,3 +424,22 @@
    min-width (40px): do not force an overflow. */
 .indus-counter-cell .indus-progress { min-width: 0; }
 .indus-track-table td { vertical-align: middle; }
+
+/* --------------------------------------------------- Card hover bubble */
+
+.indus-tip { position: fixed; z-index: 1070; display: none; pointer-events: none; min-width: 240px; max-width: 360px;
+  background: #2a2f3d; border: 1px solid #3d4457; border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .45);
+  color: #d7dbe6; font-size: .8rem; line-height: 1.45; }
+.indus-tip-head { display: flex; align-items: center; gap: .6rem; padding: .5rem .7rem; border-bottom: 1px solid #3d4457; }
+.indus-tip-head img { border-radius: 3px; flex: none; }
+.indus-tip-name { color: #fff; font-weight: 600; font-size: .85rem; }
+.indus-tip-sub { color: #8e97ab; font-size: .75rem; }
+.indus-tip-sec { padding: .4rem .7rem; border-bottom: 1px solid #353b4b; }
+.indus-tip-sec:last-child { border-bottom: 0; }
+.indus-tip-label { color: #8e97ab; font-size: .72rem; margin-bottom: .15rem; }
+.indus-tip-row { display: flex; justify-content: space-between; gap: 1rem; }
+.indus-tip-row span { color: #a9b1c3; }
+.indus-tip-row b { color: #fff; font-weight: 500; text-align: right; }
+.indus-tip-bar { height: 6px; background: #1f2330; border-radius: 3px; overflow: hidden; margin-top: .2rem; }
+.indus-tip-bar i { display: block; height: 100%; background: #e0a43b; }
+.indus-tip-bar.full i { background: #5dcaa5; }

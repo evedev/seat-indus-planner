@@ -51,6 +51,7 @@ class ReactionsController extends Controller
             'qty' => (int) $request->input('qty', 1),
             'runs' => (int) $request->input('runs', 1),
             'overrides' => (array) $request->input('overrides', []),
+            'buy' => (array) $request->input('buy', []),
         ]);
 
         return $payload === null

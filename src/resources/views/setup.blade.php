@@ -12,11 +12,20 @@
 @php
   $structureColors = ['Raitaru' => '#5588dd', 'Azbel' => '#dd8833', 'Sotiyo' => '#9944cc', 'Athanor' => '#44aa66', 'Tatara' => '#cc4444'];
   $securityColors = ['Highsec' => '#44cc44', 'Lowsec' => '#ccaa33', 'Null / Wormhole' => '#cc4444'];
+  // Funnel of a column header: opens its filter (checkboxes, or a maximum).
+  $filterButton = fn (string $col, string $kind = 'list', ?array $options = null) =>
+      '<button type="button" class="indus-filter-btn" data-filter-col="' . $col . '" data-filter-kind="' . $kind . '"'
+      . ($options ? ' data-options="' . e(json_encode($options)) . '"' : '')
+      . ' aria-label="' . e(trans('indus-planner::ui.filter')) . '"><i class="fas fa-filter"></i></button>';
   $abbrev = function (string $name) {
       $s = preg_replace('/^Standup ?/', '', $name);
       return trim(str_replace(
-          ['XL-Set ', 'L-Set ', 'M-Set ', 'Manufacturing ', 'Material Efficiency', 'Time Efficiency', 'Reactor ', 'Efficiency'],
-          ['XL ', 'L ', 'M ', 'Mfg ', 'ME', 'TE', 'Reac ', 'Eff'], $s));
+          ['XL-Set ', 'L-Set ', 'M-Set ', 'Manufacturing ', 'Material Efficiency', 'Time Efficiency', 'Reactor ', 'Efficiency',
+           'Equipment and Consumable', 'Structure and Component', 'Drone and Fighter', 'Advanced ', 'Component', 'Capital ',
+           'Equipment', 'Structure', 'Blueprint Copy', 'Research ', 'Optimization', 'Accelerator', 'Laboratory', 'Ammunition'],
+          ['XL ', 'L ', 'M ', 'Mfg ', 'ME', 'TE', 'Reac ', 'Eff',
+           'Equip/Cons', 'Struct/Comp', 'Drone/Fighter', 'Adv ', 'Comp', 'Cap ',
+           'Equip', 'Struct', 'BPC', 'Res ', 'Opt', 'Accel', 'Lab', 'Ammo'], $s));
   };
 @endphp
 
@@ -25,7 +34,7 @@
   {{-- ===================================================== Structures --}}
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">{{ trans('indus-planner::ui.industrial_structures') }}</h3>
+      <h3 class="card-title">{{ trans('indus-planner::ui.industrial_structures') }} <i class="fas fa-question-circle text-muted indus-help" data-placement="right" title="{{ trans('indus-planner::ui.structures_help') }}"></i></h3>
       <div class="card-tools">
         @if ($canManage)
           <form action="{{ route('indus-planner.structures.sync') }}" method="post" class="d-inline">
@@ -41,10 +50,9 @@
       </div>
     </div>
 
-    <form action="{{ route('indus-planner.setup.structures') }}" method="post">
+    <form action="{{ route('indus-planner.setup.structures') }}" method="post" data-dirty-watch>
       @csrf
       <div class="card-body p-0">
-        <p class="text-muted px-3 pt-3 mb-2">{{ trans('indus-planner::ui.structures_help') }}</p>
 
         @if ($structures->isEmpty())
           <div class="alert alert-info mx-3">
@@ -56,21 +64,47 @@
             @endif
           </div>
         @else
-          <table class="table table-striped table-sm mb-0 indus-structures">
+          <div class="indus-structures-scroll">
+          <table class="table table-sm mb-0 indus-structures" data-texts="{{ json_encode([
+            'all' => trans('indus-planner::ui.filter_all'),
+            'selected' => trans('indus-planner::ui.filter_selected'),
+            'check_all' => trans('indus-planner::ui.check_all'),
+            'uncheck_all' => trans('indus-planner::ui.uncheck_all'),
+            'no_rig' => trans('indus-planner::ui.filter_no_rig'),
+            'columns' => trans('indus-planner::ui.columns'),
+            'summary' => trans('indus-planner::ui.filter_summary'),
+            'max' => trans('indus-planner::ui.filter_max'),
+            'clear' => trans('indus-planner::ui.filter_clear'),
+            'text_hint' => trans('indus-planner::ui.filter_text_hint'),
+          ]) }}" data-columns="{{ json_encode([
+            ['use', trans('indus-planner::ui.use')],
+            ['icon', trans('indus-planner::ui.icon')],
+            ['type', trans('indus-planner::ui.type')],
+            ['security', trans('indus-planner::ui.security')],
+            ['system', trans('indus-planner::ui.system')],
+            ['constellation', trans('indus-planner::ui.constellation')],
+            ['region', trans('indus-planner::ui.region')],
+            ['sci', 'SCI'],
+            ['tax', trans('indus-planner::ui.tax')],
+            ['rigs', trans('indus-planner::ui.rigs')],
+            ['origin', trans('indus-planner::ui.origin')],
+          ]) }}">
             <thead>
               <tr>
-                <th class="text-center" style="width:60px">{{ trans('indus-planner::ui.use') }}</th>
-                <th style="width:40px"></th>
-                <th>{{ trans('indus-planner::ui.name') }}</th>
-                <th>{{ trans('indus-planner::ui.type') }}</th>
-                <th>{{ trans('indus-planner::ui.security') }}</th>
-                <th>{{ trans('indus-planner::ui.system') }}</th>
-                <th class="text-right" title="{{ trans('indus-planner::ui.sci_help') }}">SCI</th>
-                <th class="text-right">{{ trans('indus-planner::ui.tax') }}</th>
-                <th>Rig 1</th>
-                <th>Rig 2</th>
-                <th>Rig 3</th>
-                <th>{{ trans('indus-planner::ui.origin') }}</th>
+                <th class="text-center" style="width:60px" data-sort-col="use" data-column="use"><span class="indus-th-label">{{ trans('indus-planner::ui.use') }}</span>{!! $filterButton('use', 'list', [['used', trans('indus-planner::ui.filter_used')], ['unused', trans('indus-planner::ui.filter_unused')]]) !!}</th>
+                <th style="width:40px" data-column="icon"></th>
+                <th data-sort-col="name"><span class="indus-th-label">{{ trans('indus-planner::ui.name') }}</span>{!! $filterButton('name', 'text') !!}</th>
+                <th data-sort-col="type" data-column="type"><span class="indus-th-label">{{ trans('indus-planner::ui.type') }}</span>{!! $filterButton('type') !!}</th>
+                <th data-sort-col="security" data-column="security"><span class="indus-th-label">{{ trans('indus-planner::ui.security') }}</span>{!! $filterButton('security') !!}</th>
+                <th data-sort-col="system" data-column="system"><span class="indus-th-label">{{ trans('indus-planner::ui.system') }}</span>{!! $filterButton('system') !!}</th>
+                <th data-sort-col="constellation" data-column="constellation"><span class="indus-th-label">{{ trans('indus-planner::ui.constellation') }}</span>{!! $filterButton('constellation') !!}</th>
+                <th data-sort-col="region" data-column="region"><span class="indus-th-label">{{ trans('indus-planner::ui.region') }}</span>{!! $filterButton('region') !!}</th>
+                <th class="text-right" data-sort-col="sci" data-column="sci"><span class="indus-th-label" title="{{ trans('indus-planner::ui.sci_help') }}">SCI</span>{!! $filterButton('sci', 'max') !!}</th>
+                <th class="text-right" data-sort-col="tax" data-column="tax"><span class="indus-th-label">{{ trans('indus-planner::ui.tax') }}</span>{!! $filterButton('tax', 'max') !!}</th>
+                @for ($slot = 1; $slot <= 3; $slot++)
+                  <th data-sort-col="rig{{ $slot }}" data-column="rigs"><span class="indus-th-label">Rig {{ $slot }}</span>{!! $filterButton('rig') !!}</th>
+                @endfor
+                <th data-sort-col="origin" data-column="origin"><span class="indus-th-label">{{ trans('indus-planner::ui.origin') }}</span>{!! $filterButton('origin') !!}</th>
                 @if ($canManage)<th></th>@endif
               </tr>
             </thead>
@@ -83,35 +117,41 @@
                   $structureRigs = $structure->rigs->pluck('rig_type_id')->values();
                 @endphp
                 <tr>
-                  <td class="text-center">
+                  <td class="text-center" data-column="use">
                     <input type="checkbox" name="structures[]" value="{{ $structure->id }}" @checked(isset($selected[$structure->id]))>
                   </td>
-                  <td><img src="https://images.evetech.net/types/{{ $structure->structure_type_id }}/icon?size=32" width="28" height="28" alt="" loading="lazy"></td>
-                  <td><strong>{{ $structure->name }}</strong></td>
-                  <td style="color: {{ $structureColors[$structure->typeName()] ?? '#888' }}">
+                  <td data-column="icon"><img src="https://images.evetech.net/types/{{ $structure->structure_type_id }}/icon?size=32" width="28" height="28" alt="" loading="lazy"></td>
+                  <td data-col="name" data-filter="{{ $structure->name }}"><strong>{{ $structure->name }}</strong></td>
+                  <td data-column="type" data-col="type" data-filter="{{ $structure->typeName() }}" style="color: {{ $structureColors[$structure->typeName()] ?? '#888' }}">
                     {{ $structure->typeName() }}
                     <small class="text-muted">({{ $structure->vocation() === 'reaction' ? trans('indus-planner::ui.activity_reaction') : trans('indus-planner::ui.activity_manufacturing') }})</small>
                   </td>
-                  <td style="color: {{ $securityColors[$system['security_class'] ?? ''] ?? '#888' }}">
+                  <td data-column="security" data-col="security" data-filter="{{ $system['security_class'] ?? '—' }}" data-value="{{ $system['security_status'] ?? '' }}" style="color: {{ $securityColors[$system['security_class'] ?? ''] ?? '#888' }}">
                     {{ $system['security_class'] ?? '—' }}
                     @if ($system)<small>({{ number_format($system['security_status'], 2) }})</small>@endif
                   </td>
-                  <td>{{ $system['name'] ?? $structure->solar_system_id }}</td>
-                  <td class="text-right">{{ $sci > 0 ? number_format($sci * 100, 2, trans('indus-planner::ui.decimal_point'), trans('indus-planner::ui.thousands_sep')) . ' %' : '—' }}</td>
-                  <td class="text-right">{{ number_format($structure->facility_tax_pct, 2, trans('indus-planner::ui.decimal_point'), trans('indus-planner::ui.thousands_sep')) }} %</td>
+                  <td data-column="system" data-col="system" data-filter="{{ $system['name'] ?? $structure->solar_system_id }}">{{ $system['name'] ?? $structure->solar_system_id }}</td>
+                  <td data-column="constellation" data-col="constellation" data-filter="{{ $system['constellation'] ?? '—' }}">{{ $system['constellation'] ?? '—' }}</td>
+                  <td data-column="region" data-col="region" data-filter="{{ $system['region'] ?? '—' }}">{{ $system['region'] ?? '—' }}</td>
+                  <td class="text-right" data-column="sci" data-col="sci" data-value="{{ $sci > 0 ? round($sci * 100, 2) : '' }}">{{ $sci > 0 ? number_format($sci * 100, 2, trans('indus-planner::ui.decimal_point'), trans('indus-planner::ui.thousands_sep')) . ' %' : '—' }}</td>
+                  <td class="text-right" data-column="tax" data-col="tax" data-value="{{ (float) $structure->facility_tax_pct }}">{{ number_format($structure->facility_tax_pct, 2, trans('indus-planner::ui.decimal_point'), trans('indus-planner::ui.thousands_sep')) }} %</td>
                   @for ($i = 0; $i < 3; $i++)
-                    @php $rig = isset($structureRigs[$i]) ? ($rigs[$structureRigs[$i]] ?? null) : null; @endphp
-                    <td>
+                    @php
+                      $rig = isset($structureRigs[$i]) ? ($rigs[$structureRigs[$i]] ?? null) : null;
+                      $rigsUnknown = ! $rig && $i === 0 && $structure->source === 'esi' && ! $structure->rigs_known && ! $structure->rigs_manual;
+                      $rigFilter = $rig ? $abbrev($rig['name']) . ($rig['tier'] === 2 ? ' ★' : '') : ($rigsUnknown ? trans('indus-planner::ui.rigs_unknown') : '—');
+                    @endphp
+                    <td data-column="rigs" data-col="rig{{ $i + 1 }}" data-filter="{{ $rigFilter }}">
                       @if ($rig)
                         <span title="{{ $rig['name'] }}">{{ $abbrev($rig['name']) }}@if ($rig['tier'] === 2) ★@endif</span>
-                      @elseif ($i === 0 && $structure->source === 'esi' && ! $structure->rigs_known && ! $structure->rigs_manual)
+                      @elseif ($rigsUnknown)
                         <span class="badge badge-warning" title="{{ trans('indus-planner::ui.rigs_unknown_help') }}">{{ trans('indus-planner::ui.rigs_unknown') }}</span>
                       @else
                         —
                       @endif
                     </td>
                   @endfor
-                  <td>
+                  <td data-column="origin" data-col="origin" data-filter="{{ $structure->source === 'esi' ? ($corporationNames[$structure->corporation_id] ?? trans('indus-planner::ui.corporation')) : trans('indus-planner::ui.manual') }}">
                     @if ($structure->source === 'esi')
                       <span class="badge badge-info" title="{{ trans('indus-planner::ui.imported_help') }}">{{ $corporationNames[$structure->corporation_id] ?? trans('indus-planner::ui.corporation') }}</span>
                       @if ($structure->rigs_manual)<span class="badge badge-secondary" title="{{ trans('indus-planner::ui.manual_rigs_help') }}">{{ trans('indus-planner::ui.manual_rigs') }}</span>@endif
@@ -131,11 +171,13 @@
               @endforeach
             </tbody>
           </table>
+          </div>
         @endif
       </div>
       @if ($structures->isNotEmpty())
         <div class="card-footer">
-          <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> {{ trans('indus-planner::ui.save_selection') }}</button>
+          <button type="submit" class="btn btn-primary" data-save-button><i class="fas fa-save"></i> {{ trans('indus-planner::ui.save_selection') }}</button>
+          <span id="indus-structures-count" class="text-muted ml-3" data-template="{{ trans('indus-planner::ui.structures_selected') }}" data-filtered="{{ trans('indus-planner::ui.structures_filtered') }}"></span>
         </div>
       @endif
     </form>
@@ -154,16 +196,15 @@
   {{-- ================================================== Asset sources --}}
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">{{ trans('indus-planner::ui.asset_sources') }}</h3>
+      <h3 class="card-title">{{ trans('indus-planner::ui.asset_sources') }} <i class="fas fa-question-circle text-muted indus-help" data-placement="right" title="{{ trans('indus-planner::ui.asset_sources_help') }}"></i></h3>
     </div>
-    <form action="{{ route('indus-planner.setup.sources') }}" method="post">
+    <form action="{{ route('indus-planner.setup.sources') }}" method="post" data-dirty-watch>
       @csrf
       <div class="card-body">
-        <p class="text-muted">{{ trans('indus-planner::ui.asset_sources_help') }}</p>
 
-        <div class="row">
-          <div class="col-md-4">
-            <h5>{{ trans('indus-planner::ui.characters') }}</h5>
+        <div class="indus-sources">
+          <div data-check-group>
+            <h5>{{ trans('indus-planner::ui.personal_hangars') }}</h5>
             @forelse ($characters as $characterId => $characterName)
               <div class="custom-control custom-checkbox">
                 <input type="checkbox" class="custom-control-input" id="source-char-{{ $characterId }}" name="characters[]"
@@ -176,21 +217,21 @@
             @empty
               <p class="text-muted">{{ trans('indus-planner::ui.no_characters') }}</p>
             @endforelse
+            @if (count($characters))
+              @include('indus-planner::partials.check-buttons')
+            @endif
           </div>
 
-          <div class="col-md-8">
+          <div class="indus-sources-section">
             <h5>{{ trans('indus-planner::ui.corporation_hangars') }}</h5>
-            <div class="row">
+            <div class="indus-sources">
             @forelse ($corporations as $corporationId => $corporationName)
               @php $allowed = $allowedDivisions[$corporationId] ?? []; @endphp
-              <div class="col-sm-6 mb-3">
+              <div data-check-group>
                 <strong>
                   <img src="https://images.evetech.net/corporations/{{ $corporationId }}/logo?size=32" width="20" height="20" alt="">
                   {{ $corporationName }}
                 </strong>
-                @if (empty($allowed))
-                  <div><small class="text-muted">{{ trans('indus-planner::ui.no_hangar_role') }}</small></div>
-                @endif
                 <div class="mt-1">
                   @for ($division = 1; $division <= 7; $division++)
                     @php $isAllowed = in_array($division, $allowed, true); @endphp
@@ -205,18 +246,29 @@
                     </div>
                   @endfor
                 </div>
+                {{-- The note takes the place of the buttons, so that the hangar
+                     lists of every corporation start on the same line. --}}
+                @if (empty($allowed))
+                  <div class="indus-sources-note"><small class="text-muted">{{ trans('indus-planner::ui.no_hangar_role') }}</small></div>
+                @else
+                  @include('indus-planner::partials.check-buttons')
+                @endif
               </div>
             @empty
-              <p class="col text-muted">{{ trans('indus-planner::ui.no_corporations') }}</p>
+              <p class="text-muted">{{ trans('indus-planner::ui.no_corporations') }}</p>
             @endforelse
             </div>
           </div>
         </div>
       </div>
       <div class="card-footer">
-        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> {{ trans('indus-planner::ui.save_sources') }}</button>
+        <button type="submit" class="btn btn-primary" data-save-button><i class="fas fa-save"></i> {{ trans('indus-planner::ui.save_sources') }}</button>
       </div>
     </form>
   </div>
 
 @stop
+
+@push('javascript')
+  <script src="{{ \EveDev\Seat\IndusPlanner\Http\Controllers\AssetController::url('setup.js') }}"></script>
+@endpush

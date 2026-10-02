@@ -125,17 +125,26 @@ class StructureService
     }
 
     /**
-     * @return array<int, array{id:int, name:string, security_status:float, security_class:string}>
+     * @return array<int, array{id:int, name:string, security_status:float, security_class:string, constellation:?string, region:?string}>
      */
     public function systems(array $systemIds): array
     {
+        $rows = DB::table('solar_systems')
+            ->leftJoin('constellations', 'constellations.constellation_id', '=', 'solar_systems.constellation_id')
+            ->leftJoin('regions', 'regions.region_id', '=', 'solar_systems.region_id')
+            ->whereIn('solar_systems.system_id', array_unique($systemIds))
+            ->get(['solar_systems.system_id', 'solar_systems.name', 'solar_systems.security',
+                'constellations.name as constellation', 'regions.name as region']);
+
         $out = [];
-        foreach (DB::table('solar_systems')->whereIn('system_id', array_unique($systemIds))->get(['system_id', 'name', 'security']) as $row) {
+        foreach ($rows as $row) {
             $out[(int) $row->system_id] = [
                 'id' => (int) $row->system_id,
                 'name' => (string) $row->name,
                 'security_status' => (float) $row->security,
                 'security_class' => Constants::securityClass((float) $row->security),
+                'constellation' => $row->constellation,
+                'region' => $row->region,
             ];
         }
 

@@ -66,6 +66,7 @@ class ProductionController extends Controller
             'te' => (int) $request->input('te', 0),
             'include_reactions' => filter_var($request->input('include_reactions', true), FILTER_VALIDATE_BOOLEAN),
             'overrides' => (array) $request->input('overrides', []),
+            'buy' => (array) $request->input('buy', []),
         ]);
 
         return $payload === null
