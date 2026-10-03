@@ -8,6 +8,7 @@
 
 namespace EveDev\Seat\IndusPlanner\Http\Controllers;
 
+use EveDev\Seat\IndusPlanner\Services\MarketCatalog;
 use EveDev\Seat\IndusPlanner\Services\Planner;
 use EveDev\Seat\IndusPlanner\Services\SdeCatalog;
 use EveDev\Seat\IndusPlanner\Services\UserContext;
@@ -19,12 +20,14 @@ class ReactionsController extends Controller
     // Reaction types, in display order.
     public const REACTION_TYPES = ['composite', 'hybrid', 'biochemical'];
 
-    public function index(UserContext $context, Planner $planner, SdeCatalog $sde)
+    public function index(UserContext $context, Planner $planner, SdeCatalog $sde, MarketCatalog $markets)
     {
         $reactionStructures = $planner->setup()->reactionStructures();
         $best = $planner->setup()->defaultStructureFor('composite', 'reaction');
 
         return view('indus-planner::reactions', [
+            'markets' => $markets->options(),
+            'market' => $markets->currentValue(),
             'characters' => $context->characters(),
             'bestCharacter' => $planner->bestCharacterForIndustry(),
             'structures' => $reactionStructures,
@@ -41,9 +44,12 @@ class ReactionsController extends Controller
         return response()->json(array_map(fn ($r) => ['id' => $r[0], 'name' => $r[1]], $sde->reactableItems($category)));
     }
 
-    public function compute(Request $request, Planner $planner)
+    public function compute(Request $request, Planner $planner, MarketCatalog $markets)
     {
+        $market = $markets->resolve($request->input('market'));
+        $markets->remember($market);
         $payload = $planner->reaction([
+            'market' => $market,
             'character_id' => (int) $request->input('character_id') ?: null,
             'structure_id' => $request->input('structure_id') ? (string) $request->input('structure_id') : null,
             'type_id' => (int) $request->input('type_id'),

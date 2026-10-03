@@ -20,6 +20,7 @@ final class Calculator
      * @param  float  $skillTeReduction  TE reduction from skills (0 to 1)
      * @param  float  $implantTeReduction  TE reduction from implants (0 to 1)
      * @param  array<int,float>|null  $adjustedPrices  {type_id: adjusted_price} for the EIV
+     * @param  int  $runsPerJob  maximum runs of one job (0: a single job)
      */
     public static function reaction(
         ReactionFormula $formula,
@@ -28,6 +29,7 @@ final class Calculator
         float $skillTeReduction = 0.0,
         float $implantTeReduction = 0.0,
         ?array $adjustedPrices = null,
+        int $runsPerJob = 0,
     ): SimulationResult {
         $runs = max(1, $runs);
 
@@ -45,8 +47,8 @@ final class Calculator
         $skillTeMult = (1.0 - $skillTeReduction) * (1.0 - $implantTeReduction);
         $totalTeMult = $skillTeMult * $rigTeMult * $roleTeMult;
 
-        // Materials: the ME reduction applies to the total quantity, rounded
-        // up as in game.
+        // Materials: the ME reduction applies job by job, rounded up as in
+        // game.
         $materials = [];
         foreach ($formula->materials as $material) {
             $materials[] = [
@@ -54,7 +56,7 @@ final class Calculator
                 'name' => $material->name,
                 'group_id' => $material->groupId,
                 'qty_base' => $material->quantity * $runs,
-                'qty_actual' => (int) ceil($material->quantity * $runs * $meMultiplier),
+                'qty_actual' => self::materialQuantity($material->quantity, $runs, $runsPerJob, $meMultiplier),
             ];
         }
 
@@ -68,6 +70,7 @@ final class Calculator
             formula: $formula,
             structure: $structure,
             runs: $runs,
+            runsPerJob: self::jobBatches($runs, $runsPerJob)[1],
             outputQuantity: $formula->outputQuantity * $runs,
             materialsActual: $materials,
             timePerRunSeconds: $timePerRun,
@@ -87,6 +90,7 @@ final class Calculator
      * @param  int  $qty  final quantity wanted
      * @param  int  $meLevel  blueprint ME level (0 to 10)
      * @param  int  $teLevel  blueprint TE level (0 to 20)
+     * @param  int  $runsPerJob  runs of one blueprint copy (0: a single job)
      */
     public static function manufacturing(
         ManufacturingBlueprint $blueprint,
@@ -96,6 +100,7 @@ final class Calculator
         int $teLevel = 0,
         float $skillTeReduction = 0.0,
         ?array $adjustedPrices = null,
+        int $runsPerJob = 0,
     ): SimulationResult {
         $outputQuantity = max(1, $blueprint->outputQuantity);
         $runs = max(1, (int) ceil(max(1, $qty) / $outputQuantity));
@@ -126,8 +131,7 @@ final class Calculator
                 'name' => $material->name,
                 'group_id' => $material->groupId,
                 'qty_base' => $material->quantity * $runs,
-                // A job always consumes at least one unit of each material.
-                'qty_actual' => max(1, (int) ceil($material->quantity * $runs * $totalMeMult)),
+                'qty_actual' => self::materialQuantity($material->quantity, $runs, $runsPerJob, $totalMeMult),
             ];
         }
 
@@ -140,6 +144,7 @@ final class Calculator
             formula: null,
             structure: $structure,
             runs: $runs,
+            runsPerJob: self::jobBatches($runs, $runsPerJob)[1],
             outputQuantity: $runs * $outputQuantity,
             materialsActual: $materials,
             timePerRunSeconds: $timePerRun,
@@ -153,6 +158,34 @@ final class Calculator
             meLevel: $meLevel,
             teLevel: $teLevel,
         );
+    }
+
+    /**
+     * Jobs needed for `runs` runs when one job holds at most `runsPerJob`
+     * runs (one blueprint copy per job): full jobs, then the remainder.
+     *
+     * @return array{0:int, 1:int, 2:int} [full jobs, runs of a full job, runs of the last job (0: none)]
+     */
+    public static function jobBatches(int $runs, int $runsPerJob): array
+    {
+        if ($runs <= 0)
+            return [0, 0, 0];
+        $perJob = $runsPerJob > 0 ? min($runsPerJob, $runs) : $runs;
+
+        return [intdiv($runs, $perJob), $perJob, $runs % $perJob];
+    }
+
+    /**
+     * Quantity of a material consumed by those jobs. The ME reduction applies
+     * job by job, rounded up, and a job uses at least one unit per run: the
+     * game rule `max(runs, ceil(round(quantity x runs x multiplier, 2)))`.
+     */
+    public static function materialQuantity(int $quantityPerRun, int $runs, int $runsPerJob, float $multiplier): int
+    {
+        [$full, $perJob, $rest] = self::jobBatches($runs, $runsPerJob);
+        $job = fn (int $r) => $r > 0 ? max($r, (int) ceil(round($quantityPerRun * $r * $multiplier, 2))) : 0;
+
+        return $full * $job($perJob) + $job($rest);
     }
 
     /**

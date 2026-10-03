@@ -11,8 +11,11 @@ structures).
 - **Production**: manufacturing order simulation.
 - Both tools show the complete **production tree** (ranks, runs,
   overproduction, costs, owned blueprints) and a **production plan**: jobs to
-  start and materials to buy, with stock deduction and an in-game Multibuy
-  export.
+  start and materials to buy, with stock deduction, an in-game Multibuy
+  export and an Excel export. Runs are split into jobs following the maximum
+  runs of a blueprint copy, a price market can be chosen (Jita or a player
+  structure market) and a margin optimisation switches to buy every component
+  cheaper to buy than to produce.
 - **My plans**: save a tree and its plan to track a long production over
   several days; progress is entered by hand or detected from the industry jobs
   synchronised by SeAT.
@@ -46,7 +49,8 @@ docker compose up -d
 
 On startup SeAT installs the package, runs its migrations, downloads the three
 SDE tables it needs (`industryActivity`, `industryActivityMaterials`,
-`industryActivityProducts`) and installs its scheduled commands.
+`industryActivityProducts`, `industryBlueprints`) and installs its scheduled
+commands.
 
 ### Bare metal
 
@@ -79,7 +83,9 @@ php artisan db:seed --class="Seat\Services\Database\Seeders\PluginDatabaseSeeder
 | Types, groups, volumes, rigs and their bonuses | SDE: `invTypes`, `invGroups`, `dgmTypeAttributes` |
 | Corporation industrial structures | `corporation_structures` (Station Manager / Director token), names from `universe_structures` |
 | Fitted rigs | `corporation_assets`, `RigSlot*` flags (Director token) |
+| Maximum runs of a blueprint copy | SDE: `industryBlueprints.maxProductionLimit` (faction ships: 1) |
 | Jita buy / sell prices | `market_orders`, filtered on the reference system |
+| Player structure market prices | ESI `/markets/structures/` with a character allowed to dock (scheduled command) |
 | Adjusted prices (EIV) | `market_prices.adjusted_price` |
 | Skills | `character_skills` |
 | Stock | `character_assets`, `corporation_assets` (`CorpSAG1..7` divisions) |
@@ -91,6 +97,8 @@ php artisan db:seed --class="Seat\Services\Database\Seeders\PluginDatabaseSeeder
 ## Scheduled commands
 
 - `indus-planner:cost-indices` (hourly): system cost indices.
+- `indus-planner:refresh-markets` (hourly): orders of the player structure
+  markets added in the Industry setup.
 - `indus-planner:sync-structures` (hourly): industrial structures (Raitaru,
   Azbel, Sotiyo, Athanor, Tatara) and rigs read back from SeAT data, without any
   ESI call. Rigs entered by a manager are never overwritten; a structure that

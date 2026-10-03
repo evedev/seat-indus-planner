@@ -16,6 +16,7 @@ use EveDev\Seat\IndusPlanner\Domain\Plan;
 use EveDev\Seat\IndusPlanner\Domain\SimulationResult;
 use EveDev\Seat\IndusPlanner\Domain\TreeData;
 use EveDev\Seat\IndusPlanner\Domain\TreeItem;
+use EveDev\Seat\IndusPlanner\Models\Market;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -135,6 +136,22 @@ class Planner
         return $best ? ['me' => $best['me'], 'te' => $best['te']] : null;
     }
 
+    /**
+     * Runs of one job for a product: the runs of the best owned copy when the
+     * user has copies, otherwise the maximum runs of a copy (SDE). The limit
+     * applies even with an original.
+     */
+    public function runsPerJobFor(int $productId): ?int
+    {
+        $limit = $this->sde->runsLimit($productId);
+        $copyRuns = (int) ($this->ownedByProduct[$productId]['bpc']['max_runs'] ?? 0);
+        if ($copyRuns > 0)
+            return $limit !== null ? min($copyRuns, $limit) : $copyRuns;
+
+        return $limit;
+    }
+
+
     private function manager(): IndustryManager
     {
         return new IndustryManager(
@@ -144,6 +161,7 @@ class Planner
             $this->sde->formulas(),
             true,
             fn (int $productId) => $this->efficiencyFor($productId),
+            fn (int $productId) => $this->runsPerJobFor($productId),
         );
     }
 
@@ -179,7 +197,7 @@ class Planner
     /**
      * Simulates a reaction chain (Reactions tool).
      *
-     * @param  array{character_id:?int, structure_id:?string, type_id:int, qty_mode:string, qty:int, runs:int, overrides:array, buy?:string[]}  $input
+     * @param  array{character_id:?int, structure_id:?string, type_id:int, qty_mode:string, qty:int, runs:int, overrides:array, buy?:string[], market?:?Market}  $input
      */
     public function reaction(array $input): ?array
     {
@@ -202,18 +220,18 @@ class Planner
         }
 
         $adjusted = $this->market->adjustedPrices();
-        $result = Calculator::reaction($formula, $structure, $runs, $skill, 0.0, $adjusted);
+        $result = Calculator::reaction($formula, $structure, $runs, $skill, 0.0, $adjusted, $this->runsPerJobFor($formula->outputTypeId) ?? 0);
         $manager = $this->manager();
         $overrides = $this->overrides($input['overrides'] ?? []);
         $tree = $manager->buildProductionTree($result, $desired, $adjusted, true, $overrides, buyKeys: $this->buyKeys($input['buy'] ?? []));
 
-        return $this->payload($result, $tree, $manager, $overrides);
+        return $this->payload($result, $tree, $manager, $overrides, $input['market'] ?? null);
     }
 
     /**
      * Simulates a manufacturing order (Production tool).
      *
-     * @param  array{character_id:?int, type_id:int, qty:int, me:int, te:int, include_reactions:bool, overrides:array, buy?:string[]}  $input
+     * @param  array{character_id:?int, type_id:int, qty:int, me:int, te:int, include_reactions:bool, overrides:array, buy?:string[], market?:?Market}  $input
      */
     public function production(array $input): ?array
     {
@@ -233,14 +251,14 @@ class Planner
         $result = Calculator::manufacturing(
             $blueprint, $structure, $desired,
             max(0, min(10, (int) $input['me'])), max(0, min(20, (int) $input['te'])),
-            $skill, $adjusted,
+            $skill, $adjusted, $this->runsPerJobFor($blueprint->outputTypeId) ?? 0,
         );
         $tree = $manager->buildProductionTree($result, $desired, $adjusted, $includeReactions, $overrides, [
             'manufacturing' => $skill,
             'reaction' => $this->skillReduction($input['character_id'] ?? null, Constants::REACTION_TIME_SKILLS),
         ], $this->buyKeys($input['buy'] ?? []));
 
-        return $this->payload($result, $tree, $manager, $overrides);
+        return $this->payload($result, $tree, $manager, $overrides, $input['market'] ?? null);
     }
 
     /**
@@ -248,8 +266,9 @@ class Planner
      * and the mode chosen for each of them.
      *
      * @param  array<int, array{item:array, rank:int, mode:string}>  $rawEntries
+     * @param  Market|null  $market  price source, Jita when null
      */
-    public function plan(array $rawEntries): array
+    public function plan(array $rawEntries, ?Market $market = null): array
     {
         $entries = [];
         foreach ($rawEntries as $raw) {
@@ -263,7 +282,7 @@ class Planner
         }
 
         $typeIds = array_map(fn ($e) => $e['item']->typeId, $entries);
-        $prices = $this->market->priceMap($typeIds);
+        $prices = $this->market->priceMap($typeIds, $market);
         $stock = $this->assets->stock($typeIds);
         [$quantities, $places] = $stock ?? [[], []];
 
@@ -285,6 +304,7 @@ class Planner
             'jobs' => $jobs,
             'purchases' => $purchases,
             'stock_known' => $stock !== null,
+            'market' => MarketCatalog::describe($market),
         ];
     }
 
@@ -322,7 +342,7 @@ class Planner
         return $out;
     }
 
-    private function payload(SimulationResult $result, TreeData $tree, IndustryManager $manager, array $overrides): array
+    private function payload(SimulationResult $result, TreeData $tree, IndustryManager $manager, array $overrides, ?Market $market = null): array
     {
         $items = $tree->allItems();
         $typeIds = array_map(fn (TreeItem $i) => $i->typeId, $items);
@@ -373,7 +393,8 @@ class Planner
                 'structure_name' => $result->structure?->name,
             ],
             'tree' => $tree->toArray(),
-            'prices' => (object) $this->market->priceMap($typeIds),
+            'prices' => (object) $this->market->priceMap($typeIds, $market),
+            'market' => MarketCatalog::describe($market),
             'groups' => (object) $groups,
             'structures' => (object) $structures,
             'blueprints' => (object) $blueprints,

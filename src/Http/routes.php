@@ -7,6 +7,8 @@
  */
 
 use EveDev\Seat\IndusPlanner\Http\Controllers\AssetController;
+use EveDev\Seat\IndusPlanner\Http\Controllers\MarketAdminController;
+use EveDev\Seat\IndusPlanner\Http\Controllers\PlanExportController;
 use EveDev\Seat\IndusPlanner\Http\Controllers\ProductionController;
 use EveDev\Seat\IndusPlanner\Http\Controllers\ReactionsController;
 use EveDev\Seat\IndusPlanner\Http\Controllers\SavedPlanController;
@@ -39,6 +41,10 @@ Route::group([
         Route::put('/structures/{structure}', [StructureAdminController::class, 'update'])->name('indus-planner.structures.update');
         Route::delete('/structures/{structure}', [StructureAdminController::class, 'destroy'])->name('indus-planner.structures.destroy');
         Route::post('/structures/sync', [StructureAdminController::class, 'sync'])->name('indus-planner.structures.sync');
+        Route::get('/api/market-structures', [MarketAdminController::class, 'search'])->name('indus-planner.api.market-structures');
+        Route::post('/markets', [MarketAdminController::class, 'store'])->name('indus-planner.markets.store');
+        Route::post('/markets/{market}/refresh', [MarketAdminController::class, 'refresh'])->name('indus-planner.markets.refresh');
+        Route::delete('/markets/{market}', [MarketAdminController::class, 'destroy'])->name('indus-planner.markets.destroy');
     });
 
     // Reactions
@@ -54,6 +60,7 @@ Route::group([
 
     // Production plan (jobs and purchases), shared by both tools.
     Route::post('/api/plan', [ProductionController::class, 'plan'])->name('indus-planner.api.plan');
+    Route::post('/api/plan/export', [PlanExportController::class, 'export'])->name('indus-planner.api.plan.export');
 
     // Saved plans (private to their owner).
     Route::get('/plans', [SavedPlanController::class, 'index'])->name('indus-planner.plans');

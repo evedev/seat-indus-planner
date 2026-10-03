@@ -61,13 +61,29 @@
   </div>
   <div class="indus-tile" id="tile-value">
     <div class="indus-tile-label">{{ trans('indus-planner::ui.produced_value') }}</div>
-    <div class="indus-tile-value" id="sum-value-sell">—</div>
-    <div class="indus-tile-sub">Jita sell · buy <span id="sum-value-buy">—</span></div>
+    <div class="indus-tile-split">
+      <div>
+        <div class="indus-tile-value" id="sum-value-sell">—</div>
+        <div class="indus-tile-sub"><span class="js-market">Jita</span> sell</div>
+      </div>
+      <div class="text-right">
+        <div class="indus-tile-value" id="sum-value-buy">—</div>
+        <div class="indus-tile-sub"><span class="js-market">Jita</span> buy</div>
+      </div>
+    </div>
   </div>
   <div class="indus-tile" id="tile-margin">
-    <div class="indus-tile-label">{{ trans('indus-planner::ui.margin_sell') }}</div>
-    <div class="indus-tile-value" id="sum-margin-sell">—</div>
-    <div class="indus-tile-sub"><span id="sum-profit-sell">—</span> · buy <span id="sum-margin-buy">—</span></div>
+    <div class="indus-tile-label">{{ trans('indus-planner::ui.margin') }}</div>
+    <div class="indus-tile-split">
+      <div id="margin-sell">
+        <div class="indus-tile-value" id="sum-margin-sell">—</div>
+        <div class="indus-tile-sub"><span class="js-market">Jita</span> sell · <span id="sum-profit-sell">—</span></div>
+      </div>
+      <div id="margin-buy" class="text-right">
+        <div class="indus-tile-value" id="sum-margin-buy">—</div>
+        <div class="indus-tile-sub"><span class="js-market">Jita</span> buy · <span id="sum-profit-buy">—</span></div>
+      </div>
+    </div>
   </div>
   <div class="indus-tile" id="tile-missing">
     <div class="indus-tile-label">{{ trans('indus-planner::ui.left_to_buy') }}</div>

@@ -4,5 +4,8 @@
         <testsuite name="Domain">
             <directory>tests/Domain</directory>
         </testsuite>
+        <testsuite name="Services">
+            <directory>tests/Services</directory>
+        </testsuite>
     </testsuites>
 </phpunit>

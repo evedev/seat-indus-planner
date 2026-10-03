@@ -40,6 +40,57 @@
     return numberFormats[decimals].format(Number(value) || 0);
   }
 
+  // One hover bubble for the whole page (tree cards, summary tiles), placed
+  // next to the cursor and kept inside the window.
+  let bubble = null;
+  function showBubble(html, e) {
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.className = 'indus-tip';
+      document.body.appendChild(bubble);
+    }
+    bubble.innerHTML = html;
+    bubble.style.display = 'block';
+    moveBubble(e);
+  }
+
+  function bubbleShown() {
+    return !!bubble && bubble.style.display === 'block';
+  }
+
+  function moveBubble(e) {
+    if (!bubbleShown()) return;
+    const gap = 16;
+    let x = e.clientX + gap;
+    let y = e.clientY + gap;
+    if (x + bubble.offsetWidth > window.innerWidth - 8) x = e.clientX - gap - bubble.offsetWidth;
+    if (y + bubble.offsetHeight > window.innerHeight - 8) y = e.clientY - gap - bubble.offsetHeight;
+    bubble.style.left = Math.max(8, x) + 'px';
+    bubble.style.top = Math.max(8, y) + 'px';
+  }
+
+  function hideBubble() {
+    if (bubble) bubble.style.display = 'none';
+  }
+
+  // Pieces of a bubble: header (title, main figure), section (optional
+  // caption), label / value row (optional color dot and sign class).
+  const tipHead = (title, sub) => '<div class="indus-tip-head"><div><div class="indus-tip-name">' + escapeHtml(title) + '</div>' +
+    (sub ? '<div class="indus-tip-sub">' + escapeHtml(sub) + '</div>' : '') + '</div></div>';
+  const tipSection = (caption, body) => '<div class="indus-tip-sec">' +
+    (caption ? '<div class="indus-tip-label">' + escapeHtml(caption) + '</div>' : '') + body + '</div>';
+  const tipRow = (label, value, options = {}) => '<div class="indus-tip-row' + (options.sign ? ' ' + options.sign : '') + '"><span>' +
+    (options.dot ? '<span class="indus-dot ' + options.dot + '"></span>' : '') + escapeHtml(label) + '</span><b>' + escapeHtml(value) + '</b></div>';
+  // Amounts of the summary bubbles: millions of ISK, space as thousands separator.
+  const tipIsk = (value) => (value ? spacedMillions(value) : DASH);
+  const tipNote = (text, muted) => '<div class="indus-tip-note' + (muted ? ' muted' : '') + '">' + escapeHtml(text) + '</div>';
+
+  // Short name of the price market of a payload or a plan; "Jita" for the
+  // plans saved before the market choice existed.
+  function marketName(data) {
+    return (data && data.market && data.market.short) || 'Jita';
+  }
+
   function formatIsk(value) {
     return value ? formatNumber(value) + ' ISK' : DASH;
   }
@@ -97,6 +148,81 @@
     if (a >= 1e6) return sign + formatNumber(a / 1e6, 1) + NBSP + t('unit_million');
     if (a >= 1e3) return sign + formatNumber(a / 1e3, 1) + NBSP + t('unit_thousand');
     return sign + formatNumber(a);
+  }
+
+  // Margin optimisation, on a tree where everything is produced: for every
+  // producible node, from the deepest rank up, compares buying its need
+  // (market sell price) with producing it (job cost plus its materials,
+  // each at its own best cost). Nodes are merged by rank as on the cards.
+  // Returns the mode of every node it could evaluate.
+  function optimizeModes(payload) {
+    const tree = payload.tree;
+    const subItems = tree.sub_items || {};
+    const price = (tid) => (payload.prices[tid] || {}).sell || 0;
+    const nodes = [];
+    nodes[1] = new Map(tree.rank1.map((item) => [item.type_id, item]));
+    let level = new Map([...nodes[1]].filter(([, item]) => item.is_reaction_output));
+    for (let rank = 2; level.size && rank <= MAX_RANK; rank++) {
+      const merged = new Map();
+      level.forEach((parent, parentTid) => (subItems[String(parentTid)] || []).forEach((child) => {
+        const known = merged.get(child.type_id);
+        merged.set(child.type_id, known
+          ? Object.assign({}, known, { qty_total: known.qty_total + child.qty_total, job_cost: (known.job_cost || 0) + (child.job_cost || 0) })
+          : child);
+      }));
+      nodes[rank] = merged;
+      level = new Map([...merged].filter(([, item]) => item.is_reaction_output));
+    }
+
+    const modes = new Map();
+    const memo = new Map();
+    const best = (rank, tid) => {
+      const key = rank + ':' + tid;
+      if (memo.has(key)) return memo.get(key);
+      const item = nodes[rank].get(tid);
+      const unit = price(tid);
+      const buy = unit > 0 ? unit * item.qty_total : Infinity;
+      const children = subItems[String(tid)] || [];
+      let cost = Number.isFinite(buy) ? buy : 0;
+      if (item.is_reaction_output && children.length && nodes[rank + 1]) {
+        let produce = item.job_cost || 0;
+        children.forEach((child) => {
+          const node = nodes[rank + 1].get(child.type_id);
+          if (node && node.qty_total > 0) produce += best(rank + 1, child.type_id) / node.qty_total * child.qty_total;
+        });
+        const buyIt = buy < produce;
+        modes.set(key, buyIt ? MODE_BUY : MODE_PRODUCE);
+        cost = buyIt ? buy : produce;
+      }
+      memo.set(key, cost);
+      return cost;
+    };
+    nodes[1].forEach((item, tid) => best(1, tid));
+
+    return modes;
+  }
+
+  // Runs split into jobs of at most `perJob` runs (one blueprint copy per
+  // job): "3×40+22" on the cards, "3 × 40 runs + 22 runs" in full.
+  function jobBatches(runs, perJob) {
+    if (!(runs > 0)) return null;
+    const per = perJob > 0 ? Math.min(perJob, runs) : runs;
+    return { full: Math.floor(runs / per), per, rest: runs % per };
+  }
+
+  function jobsText(runs, perJob, full) {
+    const b = jobBatches(runs, perJob);
+    if (!b) return DASH;
+    if (!full) return formatNumber(b.full) + '×' + compact(b.per) + (b.rest ? '+' + compact(b.rest) : '');
+    return t('jobs_split_full', { count: formatNumber(b.full), runs: formatNumber(b.per) }) +
+      (b.rest ? ' + ' + t('jobs_split_rest', { runs: formatNumber(b.rest) }) : '');
+  }
+
+  // Amount in millions with a space as thousands separator, whatever the
+  // language: "12.40 M", "1 234.57 M" ("12,40 M" in French).
+  function spacedMillions(value) {
+    const parts = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).formatToParts(value / 1e6);
+    return parts.map((part) => (part.type === 'group' ? NBSP : part.value)).join('') + NBSP + t('unit_million');
   }
 
   function pct(value) {
@@ -213,12 +339,11 @@
     // never remembered.
     render(payload) {
       this.hideTip();
-      const previousRoot = this.payload ? this.payload.tree.output.type_id : null;
       this.payload = payload;
       const tree = payload.tree;
 
       this.previousPool = this.pool || new Map();
-      if (!this.userModes || (previousRoot !== null && previousRoot !== tree.output.type_id)) this.userModes = new Map();
+      if (!this.userModes) this.userModes = new Map();
       this.pool = new Map();
       this.columns = [];
       this.columnEls = [];
@@ -321,7 +446,8 @@
       el.className = 'indus-card';
       el.innerHTML =
         '<div class="indus-card-icon"><img alt="" loading="lazy"></div>' +
-        '<div class="indus-card-body"><div class="indus-card-name"></div><div class="indus-card-line"></div></div>' +
+        '<div class="indus-card-body"><div class="indus-card-head"><div class="indus-card-name"></div><span class="indus-card-time"></span></div>' +
+        '<div class="indus-card-line"></div></div>' +
         '<div class="indus-card-side"><div class="indus-card-mode"></div><span class="indus-card-bp-slot"></span></div>' +
         '<div class="indus-card-progress"></div>';
       el.querySelector('.indus-card-mode').addEventListener('click', (e) => {
@@ -340,7 +466,7 @@
       // A re-render (mode switch) hides the bubble: it comes back, updated,
       // on the next move.
       el.addEventListener('mousemove', (e) => {
-        if (Tree.tip && Tree.tip.style.display === 'block') this.moveTip(e); else this.showTip(el._card, e);
+        if (bubbleShown()) this.moveTip(e); else this.showTip(el._card, e);
       });
       el.addEventListener('mouseleave', () => {
         if (!this.pinned) this.highlight(null);
@@ -410,10 +536,12 @@
       const p = this.payload.prices[item.type_id] || {};
       const qty = item.qty_total;
       const producing = item.runs > 0 && card.mode !== MODE_BUY;
-      const isk = (v) => (v ? formatNumber(v) + ' ISK' : t('not_available'));
-      const row = (label, value) => '<div class="indus-tip-row"><span>' + escapeHtml(label) + '</span><b>' + escapeHtml(value) + '</b></div>';
+      const isk = (v) => (v ? spacedMillions(v) : t('not_available'));
+      const market = marketName(this.payload);
+      const row = (label, value, fallback) => '<div class="indus-tip-row"><span>' + escapeHtml(label) + '</span><b>' + escapeHtml(value) +
+        (fallback ? ' <span class="indus-tip-fallback">Jita</span>' : '') + '</b></div>';
       const summary = producing
-        ? t('tip_summary_produced', { need: formatNumber(qty), runs: formatNumber(item.runs), produced: formatNumber(item.qty_produced || item.qty_total + item.surplus) })
+        ? t('tip_summary_produced', { need: formatNumber(qty), jobs: jobsText(item.runs, item.runs_per_job, true), produced: formatNumber(item.qty_produced || item.qty_total + item.surplus) })
         : t('tip_summary_need', { need: formatNumber(qty) });
 
       let html = '<div class="indus-tip-head"><img src="' + icon(item.type_id, 64) + '" width="32" height="32" alt="">' +
@@ -428,8 +556,8 @@
       }
 
       html += '<div class="indus-tip-sec"><div class="indus-tip-label">' + escapeHtml(t('tip_prices')) + '</div>' +
-        row(t('tip_jita_buy'), isk((p.jita_buy || 0) * qty)) +
-        row(t('tip_jita_sell'), isk((p.jita_sell || 0) * qty)) +
+        row(t('tip_buy', { market }), isk((p.buy || 0) * qty), p.buy_fallback) +
+        row(t('tip_sell', { market }), isk((p.sell || 0) * qty), p.sell_fallback) +
         row(t('tip_average'), isk((p.average || 0) * qty)) +
         row(t('tip_adjusted'), isk((p.adjusted || 0) * qty)) + '</div>';
 
@@ -437,42 +565,30 @@
       if (producing) {
         details += row(t('tip_surplus'), formatNumber(item.surplus));
         if (item.structure_name) details += row(t('tip_structure'), item.structure_name);
-        if (item.time_seconds) details += row(t('tip_duration'), formatDuration(item.time_seconds));
+        if (item.time_seconds) {
+          const b = jobBatches(item.runs, item.runs_per_job);
+          details += row(t('tip_job_duration', { runs: formatNumber(b.per) }), formatDuration(item.time_seconds / item.runs * b.per));
+          details += row(t('tip_duration'), formatDuration(item.time_seconds));
+        }
       }
       const volume = (item.volume || 0) * qty;
       details += row(t('tip_volume'), volume ? formatNumber(volume, 2) + ' m³' : t('not_available'));
       if (card.bp) details += row(t('tip_blueprint'), card.bp.text);
+      if (p.buy_fallback || p.sell_fallback) details += '<div class="indus-tip-note">' + escapeHtml(t('price_fallback', { market })) + '</div>';
       return html + '<div class="indus-tip-sec">' + details + '</div>';
     }
 
-    // One bubble for the whole page, placed next to the cursor and kept
-    // inside the window.
     showTip(card, e) {
       if (!card || !card.active || !this.payload) return;
-      if (!Tree.tip) {
-        Tree.tip = document.createElement('div');
-        Tree.tip.className = 'indus-tip';
-        document.body.appendChild(Tree.tip);
-      }
-      Tree.tip.innerHTML = this.tooltipHtml(card);
-      Tree.tip.style.display = 'block';
-      this.moveTip(e);
+      showBubble(this.tooltipHtml(card), e);
     }
 
     moveTip(e) {
-      const tip = Tree.tip;
-      if (!tip || tip.style.display !== 'block') return;
-      const gap = 16;
-      let x = e.clientX + gap;
-      let y = e.clientY + gap;
-      if (x + tip.offsetWidth > window.innerWidth - 8) x = e.clientX - gap - tip.offsetWidth;
-      if (y + tip.offsetHeight > window.innerHeight - 8) y = e.clientY - gap - tip.offsetHeight;
-      tip.style.left = Math.max(8, x) + 'px';
-      tip.style.top = Math.max(8, y) + 'px';
+      moveBubble(e);
     }
 
     hideTip() {
-      if (Tree.tip) Tree.tip.style.display = 'none';
+      hideBubble();
     }
 
     // Groups the cards of a column by item family (hence by color): produced
@@ -533,10 +649,17 @@
       const bought = card.mode === MODE_BUY;
       const value = (v) => '<b>' + v + '</b>';
       const figure = (show, v) => value(bought ? BOUGHT_MARK : (show ? v : DASH));
+      // Duration of one full job, next to the name; none for a bought card.
+      const perRun = produced ? item.time_seconds / item.runs : 0;
+      const batches = jobBatches(item.runs, item.runs_per_job);
+      const time = card.el.querySelector('.indus-card-time');
+      const showTime = !bought && perRun > 0 && batches;
+      time.innerHTML = showTime ? '<i class="far fa-clock"></i> ' + escapeHtml(formatDuration(perRun * batches.per)) : '';
+      time.title = showTime ? t('job_duration_help', { runs: formatNumber(batches.per) }) : '';
       card.el.querySelector('.indus-card-line').innerHTML =
         escapeHtml(t('card_needed')) + ' ' + value(compact(item.qty_total)) +
         ' · ' + escapeHtml(t('card_produced')) + ' ' + figure(produced, compact(item.qty_produced || item.qty_total + item.surplus)) +
-        ' · ' + escapeHtml(t('card_runs')) + ' ' + figure(produced, compact(item.runs)) +
+        ' · ' + escapeHtml(t('card_runs')) + ' ' + figure(produced, jobsText(item.runs, item.runs_per_job)) +
         ' · ' + escapeHtml(t('card_surplus')) + ' ' + figure(produced && item.surplus, compact(item.surplus));
     }
 
@@ -619,8 +742,8 @@
           if (!card.active) return;
           const p = this.payload.prices[card.item.type_id] || {};
           if (card.mode === MODE_BUY) {
-            buy += (p.jita_buy || 0) * card.item.qty_total;
-            sell += (p.jita_sell || 0) * card.item.qty_total;
+            buy += (p.buy || 0) * card.item.qty_total;
+            sell += (p.sell || 0) * card.item.qty_total;
           } else {
             runs += card.item.job_cost || 0;
           }
@@ -630,7 +753,8 @@
         const tip = [col.el.querySelector('.indus-column-title').textContent];
         if (!col.isProducts) {
           col.totals.querySelector('[data-t="sell"]').textContent = formatMillions(sell);
-          tip.push(t('purchases_sell', { isk: formatIsk(sell) }), t('purchases_buy', { isk: formatIsk(buy) }));
+          const market = marketName(this.payload);
+          tip.push(t('purchases_sell', { isk: formatIsk(sell), market }), t('purchases_buy', { isk: formatIsk(buy), market }));
         }
         tip.push(t('run_cost', { isk: formatIsk(runs) }));
         col.totals.title = tip.join('\n');
@@ -762,8 +886,8 @@
       this.columns.forEach((col) => col.cards.forEach((card) => {
         if (!card.active || !(card.item.surplus > 0)) return;
         const p = this.payload.prices[card.item.type_id] || {};
-        buy += (p.jita_buy || 0) * card.item.surplus;
-        sell += (p.jita_sell || 0) * card.item.surplus;
+        buy += (p.buy || 0) * card.item.surplus;
+        sell += (p.sell || 0) * card.item.surplus;
       }));
       return { buy, sell };
     }
@@ -780,20 +904,41 @@
     if (title !== undefined) el.title = title;
   }
 
+  const SUMMARY_TILES = ['tile-cost', 'tile-value', 'tile-margin', 'tile-missing'];
+
+  // Hover bubbles of the summary tiles, filled by updateSummary().
+  function bindSummaryTips() {
+    SUMMARY_TILES.forEach((id) => {
+      const tile = document.getElementById(id);
+      if (!tile || tile._tipBound) return;
+      tile._tipBound = true;
+      tile.addEventListener('mouseenter', (e) => { if (tile._tipHtml) showBubble(tile._tipHtml, e); });
+      tile.addEventListener('mousemove', (e) => moveBubble(e));
+      tile.addEventListener('mouseleave', hideBubble);
+    });
+  }
+
+  const tileTitle = (id) => document.getElementById(id).querySelector('.indus-tile-label').textContent.trim();
+
   function clearSummary() {
     ['sum-total', 'sum-purchases', 'sum-runs', 'sum-value-sell', 'sum-value-buy', 'sum-margin-sell',
-      'sum-profit-sell', 'sum-margin-buy', 'sum-missing', 'sum-surplus-sell'].forEach((id) => setText(id, DASH, ''));
+      'sum-profit-sell', 'sum-margin-buy', 'sum-profit-buy', 'sum-missing', 'sum-surplus-sell'].forEach((id) => setText(id, DASH, ''));
     setText('sum-missing-note', t('stock_deducted'));
-    ['tile-cost', 'tile-value', 'tile-margin', 'tile-missing'].forEach((id) => { document.getElementById(id).title = ''; });
-    document.getElementById('tile-margin').classList.remove('pos', 'neg');
+    SUMMARY_TILES.forEach((id) => { document.getElementById(id)._tipHtml = null; });
+    ['margin-sell', 'margin-buy'].forEach((id) => document.getElementById(id).classList.remove('pos', 'neg'));
     document.getElementById('sum-bar-purchases').style.width = '0';
     document.getElementById('sum-bar-jobs').style.width = '0';
   }
 
-  function updateSummary(tree, planData) {
+  // `deduct`: state of the "Deduct stock" option of the plan, which also
+  // drives the "Left to buy" tile.
+  function updateSummary(tree, planData, deduct = true) {
     const payload = tree.payload;
     if (!payload) { clearSummary(); return; }
     const result = payload.result;
+    const market = marketName(payload);
+    bindSummaryTips();
+    document.querySelectorAll('.js-market').forEach((el) => { el.textContent = market; });
 
     let totalRuns = tree.columns.reduce((s, c) => s + c.runs, 0);
     if (totalRuns === 0 && result.total_job_cost > 0) totalRuns = result.total_job_cost;
@@ -806,56 +951,68 @@
     setText('sum-runs', formatShort(totalRuns));
     document.getElementById('sum-bar-purchases').style.width = (totalCost ? totalPurchases / totalCost * 100 : 0) + '%';
     document.getElementById('sum-bar-jobs').style.width = (totalCost ? totalRuns / totalCost * 100 : 0) + '%';
-    const jobTip = [];
-    if (result.job_cost > 0) jobTip.push('  ' + t('tip_job_sci', { isk: formatIsk(result.job_cost) }));
-    if (result.scc_cost > 0) jobTip.push('  ' + t('tip_job_scc', { isk: formatIsk(result.scc_cost) }));
-    if (result.facility_cost > 0) jobTip.push('  ' + t('tip_job_facility', { isk: formatIsk(result.facility_cost) }));
-    document.getElementById('tile-cost').title =
-      t('tip_total_cost', { isk: formatIsk(totalCost) }) +
-      '\n' + t('purchases_sell', { isk: formatIsk(totalPurchases) }) +
-      '\n' + t('run_cost', { isk: totalRuns > 0 ? formatIsk(totalRuns) : (payload.has_structures ? t('adjusted_unavailable') : t('no_structure_selected')) }) +
-      (jobTip.length ? '\n' + jobTip.join('\n') : '');
+    let jobDetail = '';
+    if (result.job_cost > 0) jobDetail += tipRow(t('sum_job_sci'), tipIsk(result.job_cost));
+    if (result.scc_cost > 0) jobDetail += tipRow(t('sum_job_scc'), tipIsk(result.scc_cost));
+    if (result.facility_cost > 0) jobDetail += tipRow(t('sum_job_facility'), tipIsk(result.facility_cost));
+    document.getElementById('tile-cost')._tipHtml = tipHead(tileTitle('tile-cost'), tipIsk(totalCost)) +
+      tipSection(null,
+        tipRow(t('sum_purchases', { market }), tipIsk(totalPurchases), { dot: 'purchases' }) +
+        tipRow(t('sum_run_cost'), totalRuns > 0 ? tipIsk(totalRuns) : (payload.has_structures ? t('adjusted_unavailable') : t('no_structure_selected')), { dot: 'jobs' })) +
+      (jobDetail ? tipSection(t('sum_job_detail'), jobDetail) : '');
 
     // Produced value.
     const p = payload.prices[result.output_type_id] || {};
-    const outBuy = (p.jita_buy || 0) * result.output_quantity;
-    const outSell = (p.jita_sell || 0) * result.output_quantity;
+    const outBuy = (p.buy || 0) * result.output_quantity;
+    const outSell = (p.sell || 0) * result.output_quantity;
     setText('sum-value-sell', formatShort(outSell));
     setText('sum-value-buy', formatShort(outBuy));
-    document.getElementById('tile-value').title =
-      t('tip_value_sell', { isk: formatIsk(outSell) }) + '\n' + t('tip_value_buy', { isk: formatIsk(outBuy) });
+    document.getElementById('tile-value')._tipHtml =
+      tipHead(tileTitle('tile-value'), formatNumber(result.output_quantity) + ' × ' + result.output_name) +
+      tipSection(null, tipRow(t('sum_price_sell', { market }), tipIsk(outSell)) + tipRow(t('sum_price_buy', { market }), tipIsk(outBuy)));
 
-    // Margin: (value - total cost) / total cost.
+    // Margin: (value - total cost) / total cost, at the Jita sell price on
+    // the left and at the Jita buy price on the right; each half takes the
+    // color of its sign.
     const marginTile = document.getElementById('tile-margin');
-    marginTile.classList.remove('pos', 'neg');
-    if (totalCost > 0 && outSell > 0) {
-      const profit = outSell - totalCost;
-      setText('sum-margin-sell', pct(profit / totalCost * 100));
-      setText('sum-profit-sell', (profit >= 0 ? '+' : '') + formatShort(profit));
-      marginTile.classList.add(profit >= 0 ? 'pos' : 'neg');
-    } else {
-      setText('sum-margin-sell', DASH);
-      setText('sum-profit-sell', DASH);
-    }
-    setText('sum-margin-buy', totalCost > 0 && outBuy > 0 ? pct((outBuy - totalCost) / totalCost * 100) : DASH);
-    marginTile.title = t('tip_margin') +
-      (totalCost > 0 ? '\n' + t('tip_profit_sell', { isk: formatIsk(outSell - totalCost) }) + '\n' + t('tip_profit_buy', { isk: formatIsk(outBuy - totalCost) }) : '');
+    [['sell', outSell], ['buy', outBuy]].forEach(([side, value]) => {
+      const half = document.getElementById('margin-' + side);
+      half.classList.remove('pos', 'neg');
+      if (totalCost > 0 && value > 0) {
+        const profit = value - totalCost;
+        setText('sum-margin-' + side, pct(profit / totalCost * 100));
+        setText('sum-profit-' + side, (profit >= 0 ? '+' : '') + formatShort(profit));
+        half.classList.add(profit >= 0 ? 'pos' : 'neg');
+      } else {
+        setText('sum-margin-' + side, DASH);
+        setText('sum-profit-' + side, DASH);
+      }
+    });
+    const profitRow = (label, value) => tipRow(label, value > 0 && totalCost > 0 ? tipIsk(value - totalCost) : DASH,
+      { sign: value > 0 && totalCost > 0 ? (value >= totalCost ? 'pos' : 'neg') : '' });
+    marginTile._tipHtml = tipHead(tileTitle('tile-margin')) +
+      tipSection(null, profitRow(t('sum_profit_sell', { market }), outSell) + profitRow(t('sum_profit_buy', { market }), outBuy)) +
+      tipSection(null, tipNote(t('sum_margin_formula'), true));
 
     // Left to buy once the stock is deducted, and value of the overproduction.
     const surplus = tree.surplus();
     setText('sum-surplus-sell', formatShort(surplus.sell));
-    let missingTip = t('tip_surplus_value', { sell: formatIsk(surplus.sell), buy: formatIsk(surplus.buy) });
+    const surplusSection = tipSection(t('sum_surplus'),
+      tipRow(t('sum_price_sell', { market }), tipIsk(surplus.sell)) + tipRow(t('sum_price_buy', { market }), tipIsk(surplus.buy)));
+    let missingHtml = tipHead(tileTitle('tile-missing')) + surplusSection;
     if (planData && planData.stock_known) {
-      const missing = planData.purchases.reduce((s, l) => s + l.unit_price * l.to_buy, 0);
+      const missing = planData.purchases.reduce((s, l) => s + l.unit_price * (deduct ? l.to_buy : l.quantity), 0);
       setText('sum-missing', formatShort(missing));
-      setText('sum-missing-note', t('stock_deducted'));
-      missingTip = t('tip_missing', { isk: formatIsk(missing) }) + '\n' + missingTip;
+      setText('sum-missing-note', t(deduct ? 'stock_deducted' : 'stock_not_deducted'));
+      missingHtml = tipHead(tileTitle('tile-missing'), tipIsk(missing)) +
+        tipSection(null, tipRow(t(deduct ? 'sum_left_deducted' : 'sum_left_not_deducted'), tipIsk(missing))) + surplusSection;
     } else if (planData) {
       setText('sum-missing', formatShort(totalPurchases));
       setText('sum-missing-note', t('no_asset_source'));
-      missingTip = t('tip_no_asset_source') + '\n' + missingTip;
+      missingHtml = tipHead(tileTitle('tile-missing'), tipIsk(totalPurchases)) +
+        tipSection(null, tipNote(t('sum_no_asset_source'))) + surplusSection;
     }
-    document.getElementById('tile-missing').title = missingTip;
+    document.getElementById('tile-missing')._tipHtml = missingHtml;
   }
 
   // ===================================================================
@@ -864,7 +1021,7 @@
 
   // Column widths shared by every section of a view: the tables of each
   // rank (or family) line up under each other. The item takes the rest.
-  const JOB_COLS = '<colgroup><col style="width:34px"><col><col style="width:74px"><col style="width:50px">' +
+  const JOB_COLS = '<colgroup><col style="width:34px"><col><col style="width:74px"><col style="width:84px">' +
     '<col style="width:84px"><col style="width:66px"><col style="width:66px"><col style="width:58px">' +
     '<col style="width:70px"><col style="width:120px"><col style="width:96px"></colgroup>';
   const PURCHASE_COLS = '<colgroup><col><col style="width:78px"><col style="width:74px"><col style="width:78px">' +
@@ -904,6 +1061,7 @@
       this.deduct = true;
       this.root = null;
       this.data = null;
+      this.onDeductChange = null;
     }
 
     storageKey() {
@@ -977,7 +1135,11 @@
       const byRank = new Map();
       lines.forEach((l) => { if (!byRank.has(l.rank)) byRank.set(l.rank, []); byRank.get(l.rank).push(l); });
 
-      let html = this.header(t('jobs_title'), t('jobs_title_help'));
+      const exportButton = this.exporter
+        ? '<button type="button" class="btn btn-xs btn-success ml-auto js-export" title="' + escapeHtml(t('export_excel_help')) + '"' +
+          (lines.length || this.data.purchases.length ? '' : ' disabled') + '><i class="fas fa-file-excel"></i> ' + escapeHtml(t('export_excel')) + '</button>'
+        : '';
+      let html = this.header(t('jobs_title'), t('jobs_title_help'), exportButton);
       byRank.forEach((group, rank) => {
         const longest = Math.max.apply(null, group.map((l) => l.seconds));
         const rows = group.map((l) => {
@@ -987,7 +1149,7 @@
             '<td data-sort="' + (isDone ? 1 : 0) + '"><input type="checkbox" class="js-done" data-type="' + l.type_id + '"' + (isDone ? ' checked' : '') + '></td>' +
             '<td class="name" title="' + escapeHtml(l.name) + '"><img src="' + icon(l.type_id, 32) + '" alt=""> ' + escapeHtml(l.name) + '</td>' +
             activityCell(l.activity) +
-            '<td class="text-right" data-sort="' + l.runs + '">' + formatNumber(l.runs) + '</td>' +
+            '<td class="text-right" data-sort="' + l.runs + '" title="' + escapeHtml(jobsText(l.runs, l.runs_per_job, true)) + '">' + escapeHtml(jobsText(l.runs, l.runs_per_job)) + '</td>' +
             '<td class="text-right" data-sort="' + l.seconds + '">' + (l.seconds ? formatDuration(l.seconds) : DASH) + '</td>' +
             '<td class="text-right" data-sort="' + l.qty_produced + '">' + formatNumber(l.qty_produced) + '</td>' +
             '<td class="text-right" data-sort="' + l.qty_needed + '">' + formatNumber(l.qty_needed) + '</td>' +
@@ -1020,6 +1182,8 @@
       }
       this.jobsEl.innerHTML = html;
       this.bindCommon(this.jobsEl);
+      const exportBtn = this.jobsEl.querySelector('.js-export');
+      if (exportBtn) exportBtn.addEventListener('click', () => this.exportExcel(exportBtn));
       this.jobsEl.querySelectorAll('.js-done').forEach((chk) => chk.addEventListener('change', () => {
         const set = this.done();
         const typeId = Number(chk.dataset.type);
@@ -1059,7 +1223,9 @@
             '<td class="name" title="' + escapeHtml(l.name) + '"><img src="' + icon(l.type_id, 32) + '" alt=""> ' + escapeHtml(l.name) + '</td>' +
             '<td class="text-right" data-sort="' + l.quantity + '">' + formatNumber(l.quantity) + '</td>' +
             '<td class="text-right" data-sort="' + l.total_volume + '">' + (l.total_volume ? formatNumber(l.total_volume, 1) : DASH) + '</td>' +
-            '<td class="text-right" data-sort="' + l.unit_price + '">' + (l.unit_price ? formatNumber(l.unit_price, 2) : DASH) + '</td>' +
+            '<td class="text-right' + (l.price_fallback ? ' indus-price-fallback' : '') + '" data-sort="' + l.unit_price + '"' +
+              (l.price_fallback ? ' title="' + escapeHtml(t('price_fallback', { market: marketName(this.data) })) + '"' : '') + '>' +
+              (l.unit_price ? formatNumber(l.unit_price, 2) : DASH) + (l.price_fallback ? ' *' : '') + '</td>' +
             '<td class="text-right" data-sort="' + l.total_price + '" title="' + escapeHtml(formatIsk(l.total_price)) + '">' + millionsCell(l.total_price) + '</td>' +
             '<td class="text-right" data-sort="' + (known ? l.in_stock : -1) + '" title="' + escapeHtml(l.stock_tooltip) + '">' + (known ? formatNumber(l.in_stock) : DASH) + '</td>' +
             '<td class="text-right font-weight-bold" data-sort="' + buy + '">' + formatNumber(buy) + '</td>' +
@@ -1068,7 +1234,7 @@
         const table = '<table class="table table-sm table-striped mb-0 indus-plan-table' + (this.compact ? ' compact' : '') + '">' + PURCHASE_COLS + '<thead><tr>' +
           '<th>' + escapeHtml(t('col_material')) + '</th><th class="text-right">' + escapeHtml(t('col_needed')) + '</th>' +
           '<th class="text-right">' + escapeHtml(t('col_volume')) + '</th>' +
-          '<th class="text-right" title="' + escapeHtml(t('col_unit_price_help')) + '">' + escapeHtml(t('col_unit_price')) + '</th>' +
+          '<th class="text-right" title="' + escapeHtml(t('col_unit_price_help', { market: marketName(this.data) })) + '">' + escapeHtml(t('col_unit_price')) + '</th>' +
           '<th class="text-right" title="' + escapeHtml(t('col_total_help')) + '">' + escapeHtml(t('col_total')) + '</th>' +
           '<th class="text-right">' + escapeHtml(t('col_in_stock')) + '</th><th class="text-right">' + escapeHtml(t('col_to_buy')) + '</th></tr></thead><tbody>' + rows + '</tbody></table>';
         const total = members.reduce((s, m) => s + m.total_price, 0);
@@ -1090,12 +1256,133 @@
       this.bindCommon(this.purchasesEl);
 
       const deduct = this.purchasesEl.querySelector('.js-deduct');
-      if (deduct) deduct.addEventListener('change', () => { this.deduct = deduct.checked; this.renderPurchases(); });
+      if (deduct) deduct.addEventListener('change', () => {
+        this.deduct = deduct.checked;
+        this.renderPurchases();
+        if (this.onDeductChange) this.onDeductChange();
+      });
       const copyAll = this.purchasesEl.querySelector('.js-copy-all');
       if (copyAll) copyAll.addEventListener('click', () => this.copy(lines, copyAll, t('copy_multibuy')));
       this.purchasesEl.querySelectorAll('.js-copy-group').forEach((btn) => btn.addEventListener('click', () => {
         this.copy(lines.filter((l) => l.group_name === btn.dataset.group), btn, t('copy_multibuy'));
       }));
+    }
+
+    // Both tables as displayed (done jobs, stock deducted or not), laid out
+    // by the server: one sheet per table, a band per rank or family.
+    exportPayload() {
+      const done = this.done();
+      const known = this.data.stock_known;
+      const jobs = this.data.jobs;
+      const byRank = new Map();
+      jobs.forEach((l) => { if (!byRank.has(l.rank)) byRank.set(l.rank, []); byRank.get(l.rank).push(l); });
+      const jobSections = Array.from(byRank, ([rank, group]) => {
+        const longest = Math.max.apply(null, group.map((l) => l.seconds));
+        return {
+          title: [rankTitle(rank), t('jobs_count', { count: group.length }), t('longest', { duration: longest ? formatDuration(longest) : DASH })].join('  ·  '),
+          color: rank === 0 ? '#6a5acd' : '#3b4a6b',
+          rows: group.map((l) => {
+            const bp = blueprintLabel(l.blueprint);
+            const reaction = l.activity === 'reaction';
+            return [done.has(l.type_id), l.name,
+              { v: reaction ? t('activity_reaction') : t('activity_manufacturing'), c: reaction ? LINK_COLOR_REACTION : LINK_COLOR_MANUFACTURING },
+              l.runs, jobsText(l.runs, l.runs_per_job, true), l.seconds || null, l.qty_produced, l.qty_needed, l.surplus || null, l.job_cost || null,
+              l.structure_name || null, bp ? blueprintShort(bp) : null];
+          }),
+        };
+      });
+
+      const purchases = this.data.purchases;
+      const byGroup = new Map();
+      purchases.forEach((l) => { if (!byGroup.has(l.group_name)) byGroup.set(l.group_name, []); byGroup.get(l.group_name).push(l); });
+      const purchaseSections = Array.from(byGroup, ([group, members]) => ({
+        title: group + '  ·  ' + t('group_total', { isk: formatIskShort(members.reduce((s, m) => s + m.total_price, 0)) }),
+        color: '#3b4a6b',
+        rows: members.map((l) => [l.name, l.quantity, l.total_volume || null,
+          l.price_fallback ? { v: l.unit_price || null, c: '#D39E00' } : (l.unit_price || null), l.total_price || null,
+          known ? l.in_stock : null, this.toBuy(l)]),
+      }));
+
+      const jobsFooter = jobs.length ? t('jobs_summary', {
+        count: jobs.length,
+        done: jobs.filter((l) => done.has(l.type_id)).length,
+        duration: formatDuration(jobs.reduce((s, l) => s + l.seconds, 0)),
+        cost: formatIsk(jobs.reduce((s, l) => s + l.job_cost, 0)),
+      }) : t('no_jobs');
+      const purchasesFooter = purchases.length ? t('purchases_summary', {
+        count: purchases.length,
+        need: formatIsk(purchases.reduce((s, l) => s + l.total_price, 0)),
+        buy: formatIsk(purchases.reduce((s, l) => s + l.unit_price * this.toBuy(l), 0)),
+        volume: formatNumber(purchases.reduce((s, l) => s + l.unit_volume * this.toBuy(l), 0), 1),
+      }) + (known ? '' : ' · ' + t('stock_unknown_warning'))
+        + (purchases.some((l) => l.price_fallback) ? ' · ' + t('price_fallback_note', { market: marketName(this.data) }) : '') : t('no_purchases');
+
+      return {
+        title: this.exporter.title(),
+        sheets: [
+          {
+            name: t('sheet_jobs'),
+            columns: [
+              { label: t('col_done'), type: 'check', width: 7 },
+              { label: t('col_item'), type: 'text', width: 40 },
+              { label: t('col_activity'), type: 'text', width: 15 },
+              { label: t('card_runs'), type: 'int', width: 9 },
+              { label: t('col_jobs'), type: 'text', width: 24 },
+              { label: t('col_duration'), type: 'duration', width: 12 },
+              { label: t('col_produced'), type: 'int', width: 12 },
+              { label: t('col_needed'), type: 'int', width: 12 },
+              { label: t('card_surplus'), type: 'int', width: 10 },
+              { label: t('col_cost_isk'), type: 'isk', width: 16 },
+              { label: t('col_structure'), type: 'text', width: 34 },
+              { label: t('col_blueprint'), type: 'text', width: 16 },
+            ],
+            sections: jobSections,
+            footer: jobsFooter,
+          },
+          {
+            name: t('sheet_purchases'),
+            columns: [
+              { label: t('col_material'), type: 'text', width: 40 },
+              { label: t('col_needed'), type: 'int', width: 13 },
+              { label: t('col_volume'), type: 'dec1', width: 13 },
+              { label: t('col_unit_price'), type: 'dec2', width: 15 },
+              { label: t('col_total_isk'), type: 'isk', width: 17 },
+              { label: t('col_in_stock'), type: 'int', width: 11 },
+              { label: t('col_to_buy'), type: 'int', width: 11, bold: true },
+            ],
+            sections: purchaseSections,
+            footer: purchasesFooter,
+          },
+        ],
+      };
+    }
+
+    exportExcel(button) {
+      if (!this.data || !this.exporter) return;
+      const label = button.innerHTML;
+      button.disabled = true;
+      button.textContent = t('export_running');
+      fetch(this.exporter.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json', 'X-CSRF-TOKEN': this.exporter.csrf },
+        body: JSON.stringify(this.exportPayload()),
+      }).then((response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        const match = (response.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/);
+        return response.blob().then((blob) => [blob, match ? match[1] : 'indus-planner.xlsx']);
+      }).then(([blob, filename]) => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+        button.innerHTML = label;
+      }).catch(() => {
+        button.textContent = t('export_failed');
+        setTimeout(() => { button.innerHTML = label; }, 3000);
+      }).finally(() => { button.disabled = false; });
     }
 
     copy(lines, button, label) {
@@ -1159,18 +1446,43 @@
       this.name = name;
       this.cfg = cfg;
       this.overrides = {};
+      // Margin optimisation: modes before it, restored when unchecked.
+      this.optimizeInput = document.getElementById('p-optimize');
+      this.optimizeSnapshot = null;
+      if (this.optimizeInput) {
+        this.optimizeInput.addEventListener('change', () => {
+          if (this.optimizeInput.checked) {
+            this.optimizeSnapshot = new Map(this.tree.userModes || []);
+            this.compute();
+          } else {
+            this.tree.userModes = new Map(this.optimizeSnapshot || []);
+            this.optimizeSnapshot = null;
+            this.compute({ modesOnly: true });
+          }
+        });
+      }
       this.seq = 0;
       this.planSeq = 0;
       this.planData = null;
       this.storageKey = cfg.storageKey || ('indus-planner:state:' + name);
       this.alerts = document.getElementById('indus-alerts');
       this.tree = new Tree(document.getElementById('indus-tree'), linkColor, {
-        onChange: () => { updateSummary(this.tree, this.planData); this.refreshPlan(); this.saveState(); },
+        onChange: () => { updateSummary(this.tree, this.planData, this.plan.deduct); this.refreshPlan(); this.saveState(); },
         onStructure: (typeId, structureId) => { this.overrides[typeId] = structureId; this.compute(); },
-        onModeChange: () => this.compute(),
+        // A manual switch keeps the other choices: no new optimisation.
+        onModeChange: () => this.compute({ modesOnly: true }),
       });
       this.plan = new PlanView(name, document.getElementById('indus-jobs'), document.getElementById('indus-purchases'),
         document.getElementById('indus-plan-tab-title'));
+      this.plan.onDeductChange = () => updateSummary(this.tree, this.planData, this.plan.deduct);
+      if (cfg.exportUrl) {
+        this.plan.exporter = {
+          url: cfg.exportUrl,
+          csrf: cfg.csrf,
+          title: () => (this.tree.payload
+            ? this.tree.payload.result.output_name + ' × ' + formatNumber(this.tree.payload.tree.output.qty_total) : ''),
+        };
+      }
 
       // Puts the tree and the plan aside (Industry > My plans).
       this.saveName = document.getElementById('indus-save-name');
@@ -1225,6 +1537,8 @@
         params: this.params(),
         overrides: this.overrides,
         userModes: this.tree.userModes ? Array.from(this.tree.userModes) : [],
+        optimize: !!(this.optimizeInput && this.optimizeInput.checked),
+        optimizeSnapshot: this.optimizeSnapshot ? Array.from(this.optimizeSnapshot) : null,
       });
       try { localStorage.setItem(this.storageKey, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
     }
@@ -1233,11 +1547,17 @@
     resetChoices() {
       this.overrides = {};
       this.tree.userModes = new Map();
+      if (this.optimizeSnapshot) this.optimizeSnapshot = new Map();
     }
+
 
     restoreChoices(state) {
       this.overrides = (state && state.overrides) || {};
       this.tree.userModes = new Map((state && state.userModes) || []);
+      if (this.optimizeInput) {
+        this.optimizeInput.checked = !!(state && state.optimize);
+        this.optimizeSnapshot = state && state.optimizeSnapshot ? new Map(state.optimizeSnapshot) : null;
+      }
     }
 
     post(url, body) {
@@ -1257,7 +1577,7 @@
       this.timer = setTimeout(() => this.compute(), 250);
     }
 
-    compute() {
+    compute(options = {}) {
       const params = this.params();
       this.saveState();
       if (!params) {
@@ -1268,17 +1588,37 @@
         return;
       }
       params.overrides = this.overrides;
-      params.buy = Array.from(this.tree.userModes || []).filter(([, mode]) => mode === MODE_BUY).map(([key]) => key);
       const seq = ++this.seq;
-      this.post(this.cfg.computeUrl, params).then((payload) => {
+      const buyKeys = () => Array.from(this.tree.userModes || []).filter(([, mode]) => mode === MODE_BUY).map(([key]) => key);
+      const optimise = this.optimizeInput && this.optimizeInput.checked && !options.modesOnly;
+      let switched = null;
+
+      // Optimisation: evaluated on the full tree, then the tree is computed
+      // again with the chosen modes.
+      const ready = optimise
+        ? this.post(this.cfg.computeUrl, Object.assign({}, params, { buy: [] })).then((full) => {
+          if (seq !== this.seq) return Promise.reject(null);
+          const modes = optimizeModes(full);
+          switched = 0;
+          modes.forEach((mode, key) => {
+            if (mode === MODE_BUY) switched++;
+            this.tree.userModes.set(key, mode);
+          });
+          this.saveState();
+        })
+        : Promise.resolve();
+
+      ready.then(() => this.post(this.cfg.computeUrl, Object.assign({}, params, { buy: buyKeys() }))).then((payload) => {
         if (seq !== this.seq) return;
-        this.showAlert(payload.adjusted_prices_known ? '' : t('adjusted_prices_missing'), 'warning');
+        if (!payload.adjusted_prices_known) this.showAlert(t('adjusted_prices_missing'), 'warning');
+        else if (switched !== null) this.showAlert(switched ? t('optimized', { count: switched }) : t('optimized_none'), 'info');
+        else this.showAlert('');
         this.tree.render(payload);
         this.updateSaveBar();
-        updateSummary(this.tree, this.planData);
+        updateSummary(this.tree, this.planData, this.plan.deduct);
         this.refreshPlan();
       }).catch((error) => {
-        if (seq !== this.seq) return;
+        if (error === null || seq !== this.seq) return;
         this.showAlert(t('compute_failed', { error }));
       });
     }
@@ -1289,11 +1629,12 @@
         if (!this.tree.payload) return;
         const seq = ++this.planSeq;
         const root = this.tree.payload.result.output_type_id;
-        this.post(this.cfg.planUrl, { entries: this.tree.planEntries() }).then((data) => {
+        const params = this.params();
+        this.post(this.cfg.planUrl, { entries: this.tree.planEntries(), market: params ? params.market : null }).then((data) => {
           if (seq !== this.planSeq) return;
           this.planData = data;
           this.plan.render(data, root);
-          updateSummary(this.tree, data);
+          updateSummary(this.tree, data, this.plan.deduct);
         }).catch((error) => this.showAlert(t('plan_failed', { error })));
       }, 150);
     }
@@ -1317,6 +1658,7 @@
         qty_mode: mode,
         qty: Math.max(1, Number($('p-qty').value) || 1),
         runs: Math.max(1, Number($('p-runs').value) || 1),
+        market: $('p-market').value,
       };
     };
 
@@ -1339,7 +1681,7 @@
       });
     });
     $('p-reaction').addEventListener('change', () => { tool.resetChoices(); tool.compute(); });
-    ['p-character', 'p-structure'].forEach((id) => $(id).addEventListener('change', () => tool.compute()));
+    ['p-character', 'p-structure', 'p-market'].forEach((id) => $(id).addEventListener('change', () => tool.compute()));
     ['p-qty', 'p-runs'].forEach((id) => $(id).addEventListener('input', () => tool.schedule()));
     document.querySelectorAll('input[name="p-mode"]').forEach((r) => r.addEventListener('change', () => { syncMode(); tool.compute(); }));
 
@@ -1392,6 +1734,7 @@
       me: Math.min(10, Math.max(0, Number($('p-me').value) || 0)),
       te: Math.min(20, Math.max(0, Number($('p-te').value) || 0)),
       include_reactions: $('p-reactions').checked,
+      market: $('p-market').value,
     } : null);
 
     // ME/TE prefilled from the best owned blueprint.
@@ -1443,7 +1786,7 @@
     });
     document.addEventListener('click', (e) => { if (!e.target.closest('#p-item-suggestions, #p-item')) suggestions.innerHTML = ''; });
 
-    $('p-character').addEventListener('change', () => tool.compute());
+    ['p-character', 'p-market'].forEach((id) => $(id).addEventListener('change', () => tool.compute()));
     $('p-reactions').addEventListener('change', () => tool.compute());
     ['p-qty', 'p-me', 'p-te'].forEach((id) => $(id).addEventListener('input', () => tool.schedule()));
 

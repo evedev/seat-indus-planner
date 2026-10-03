@@ -77,11 +77,28 @@
       return rowValues(row, filter.col).some((v) => filter.selected.has(v));
     };
 
+    // Header checkbox: checks or unchecks the rows shown (a filter narrows
+    // its reach); checked when they all are, indeterminate when some are.
+    const master = table.querySelector('.indus-check-all');
+    const boxOf = (row) => row.querySelector('input[name="structures[]"]');
+    const syncMaster = () => {
+      const shownRows = rows.filter((row) => !row.hidden);
+      const checked = shownRows.filter((row) => boxOf(row).checked).length;
+      master.checked = shownRows.length > 0 && checked === shownRows.length;
+      master.indeterminate = checked > 0 && checked < shownRows.length;
+    };
+    master.addEventListener('click', (e) => e.stopPropagation());
+    master.addEventListener('change', () => {
+      rows.filter((row) => !row.hidden).forEach((row) => { boxOf(row).checked = master.checked; });
+      updateCounter();
+    });
+
     // Checked structures (hidden ones included), plus the visible count when
     // a filter shortens the list.
     let lastShown = rows.length;
     const updateCounter = (shown = lastShown) => {
       lastShown = shown;
+      syncMaster();
       const selected = rows.filter((row) => row.querySelector('input[name="structures[]"]').checked).length;
       let text = counter.dataset.template.replace(':selected', selected).replace(':total', rows.length);
       if (shown < rows.length) text += ' · ' + counter.dataset.filtered.replace(':shown', shown);
@@ -219,8 +236,27 @@
     try { hidden = new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')); } catch (e) { hidden = new Set(); }
     const columnStyle = document.createElement('style');
     document.head.appendChild(columnStyle);
+    // Column groups (location, costs, rigs, origin): a tint per group and a
+    // separator before the first visible column of each group.
+    const GROUPS = [['loc', ['security', 'system', 'constellation', 'region']], ['cost', ['sci', 'tax']], ['rig', ['rigs']], ['end', ['origin']]];
+    GROUPS.forEach(([group, keys]) => keys.forEach((key) => {
+      table.querySelectorAll('[data-column="' + key + '"]').forEach((el) => el.classList.add('grp-' + group));
+    }));
+    const markGroupStarts = () => {
+      table.querySelectorAll('.grp-start').forEach((el) => el.classList.remove('grp-start'));
+      GROUPS.forEach(([, keys]) => {
+        const first = keys.find((key) => !hidden.has(key));
+        if (!first) return;
+        // Only the first cell of each row: the three rig slots share a key.
+        table.querySelectorAll('tr').forEach((tr) => {
+          const cell = tr.querySelector('[data-column="' + first + '"]');
+          if (cell) cell.classList.add('grp-start');
+        });
+      });
+    };
     const renderColumns = () => {
       columnStyle.textContent = Array.from(hidden, (key) => '.indus-structures [data-column="' + key + '"] { display: none; }').join('\n');
+      markGroupStarts();
     };
     const setColumn = (key, visible) => {
       if (visible) {
@@ -323,8 +359,46 @@
     });
   }
 
+  // Price market form: structures known by SeAT, searched by name.
+  function initMarketSearch(input) {
+    const list = document.getElementById('indus-market-suggestions');
+    const hidden = document.getElementById('indus-market-structure');
+    const add = document.getElementById('indus-market-add');
+    let timer = null;
+    input.addEventListener('input', () => {
+      hidden.value = '';
+      add.disabled = true;
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 3) { list.innerHTML = ''; return; }
+      timer = setTimeout(() => {
+        fetch(input.dataset.url + '?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+          .then((r) => r.json())
+          .then((rows) => {
+            list.innerHTML = '';
+            rows.forEach((row) => {
+              const b = document.createElement('button');
+              b.type = 'button';
+              b.className = 'list-group-item list-group-item-action py-1';
+              b.textContent = row.name + (row.system ? ' (' + row.system + ')' : '');
+              b.addEventListener('click', () => {
+                input.value = row.name;
+                hidden.value = row.id;
+                add.disabled = false;
+                list.innerHTML = '';
+              });
+              list.appendChild(b);
+            });
+          });
+      }, 250);
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('#indus-market-suggestions, #indus-market-search')) list.innerHTML = ''; });
+  }
+
   const table = document.querySelector('.indus-structures');
   if (table) initStructures(table);
+  const marketSearch = document.getElementById('indus-market-search');
+  if (marketSearch) initMarketSearch(marketSearch);
   initDirtyForms();
   initCheckButtons();
   if (window.jQuery && window.jQuery.fn.tooltip) {

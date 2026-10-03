@@ -19,40 +19,59 @@
           <a href="{{ route('indus-planner.setup') }}">{{ trans('indus-planner::ui.choose_structures') }}</a>.
         </div>
       @endunless
-      <div class="form-row align-items-end">
-        <div class="col-md-2">
-          <label class="mb-0 small">{{ trans('indus-planner::ui.character') }}</label>
+      <div class="indus-param-tiles production">
+        <div class="indus-param-tile" style="--tile: #888780">
+          <div class="indus-param-title">{{ trans('indus-planner::ui.character') }}</div>
           <select id="p-character" class="form-control form-control-sm">
             @foreach ($characters as $id => $name)
               <option value="{{ $id }}" @selected($id === $bestCharacter)>{{ $name }}</option>
             @endforeach
           </select>
         </div>
-        <div class="col-md-4 position-relative">
-          <label class="mb-0 small">{{ trans('indus-planner::ui.item_to_produce') }}</label>
-          <input type="search" id="p-item" class="form-control form-control-sm" autocomplete="off"
-                 placeholder="{{ trans('indus-planner::ui.search_placeholder') }}">
-          <div id="p-item-suggestions" class="list-group indus-suggestions"></div>
+        <div class="indus-param-tile" style="--tile: #378add">
+          <div class="indus-param-title">{{ trans('indus-planner::ui.item_to_produce') }}</div>
+          <div class="indus-param-kv">
+            <label for="p-item">{{ trans('indus-planner::ui.item') }}</label>
+            <div class="position-relative">
+              <input type="search" id="p-item" class="form-control form-control-sm" autocomplete="off"
+                     placeholder="{{ trans('indus-planner::ui.search_placeholder') }}">
+              <div id="p-item-suggestions" class="list-group indus-suggestions"></div>
+            </div>
+            <label for="p-qty" title="{{ trans('indus-planner::ui.final_quantity_help') }}">{{ trans('indus-planner::ui.final_quantity') }}</label>
+            <input type="number" id="p-qty" class="form-control form-control-sm indus-param-number" min="1" max="99999999" value="1">
+          </div>
         </div>
-        <div class="col-md-1">
-          <label class="mb-0 small">{{ trans('indus-planner::ui.quantity') }}</label>
-          <input type="number" id="p-qty" class="form-control form-control-sm" min="1" max="99999999" value="1">
+        <div class="indus-param-tile" style="--tile: #7f77dd">
+          <div class="indus-param-title">{{ trans('indus-planner::ui.tile_blueprint') }}</div>
+          <div class="indus-param-bp">
+            <label for="p-me" title="{{ trans('indus-planner::ui.bp_me_help') }}">ME</label>
+            <input type="number" id="p-me" class="form-control form-control-sm" min="0" max="10" value="0">
+            <div id="p-blueprint" class="small text-muted"></div>
+            <label for="p-te" title="{{ trans('indus-planner::ui.bp_te_help') }}">TE</label>
+            <input type="number" id="p-te" class="form-control form-control-sm" min="0" max="20" step="2" value="0">
+            <div></div>
+          </div>
         </div>
-        <div class="col-md-1">
-          <label class="mb-0 small" title="{{ trans('indus-planner::ui.bp_me_help') }}">{{ trans('indus-planner::ui.bp_me') }}</label>
-          <input type="number" id="p-me" class="form-control form-control-sm" min="0" max="10" value="0">
+        <div class="indus-param-tile" style="--tile: #1d9e75">
+          <div class="indus-param-title">{{ trans('indus-planner::ui.tile_market') }}</div>
+          <select id="p-market" class="form-control form-control-sm" title="{{ trans('indus-planner::ui.price_market_help') }}">
+            @foreach ($markets as $option)
+              <option value="{{ $option['value'] }}" @selected($option['value'] === $market) @disabled($option['disabled'])>{{ $option['label'] }}</option>
+            @endforeach
+          </select>
+          <div class="custom-control custom-checkbox mt-1">
+            <input type="checkbox" class="custom-control-input" id="p-optimize">
+            <label class="custom-control-label small" for="p-optimize"
+                   title="{{ trans('indus-planner::ui.optimize_margin_help') }}">{{ trans('indus-planner::ui.optimize_margin') }}</label>
+          </div>
         </div>
-        <div class="col-md-1">
-          <label class="mb-0 small" title="{{ trans('indus-planner::ui.bp_te_help') }}">{{ trans('indus-planner::ui.bp_te') }}</label>
-          <input type="number" id="p-te" class="form-control form-control-sm" min="0" max="20" step="2" value="0">
-        </div>
-        <div class="col-md-3">
+        <div class="indus-param-tile" style="--tile: #ba7517">
+          <div class="indus-param-title">{{ trans('indus-planner::ui.tile_others') }}</div>
           <div class="custom-control custom-checkbox">
             <input type="checkbox" class="custom-control-input" id="p-reactions" checked>
             <label class="custom-control-label small" for="p-reactions"
                    title="{{ trans('indus-planner::ui.include_reactions_help') }}">{{ trans('indus-planner::ui.include_reactions') }}</label>
           </div>
-          <div id="p-blueprint" class="small text-muted"></div>
         </div>
       </div>
     </div>
@@ -69,6 +88,7 @@
       searchUrl: @json(route('indus-planner.api.production.search')),
       blueprintUrl: @json(route('indus-planner.api.production.blueprint')),
       planUrl: @json(route('indus-planner.api.plan')),
+      exportUrl: @json(route('indus-planner.api.plan.export')),
       saveUrl: @json(route('indus-planner.plans.store')),
       csrf: @json(csrf_token()),
       storageKey: @json('indus-planner:v2:' . auth()->id() . ':production'),

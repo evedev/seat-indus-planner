@@ -15,6 +15,7 @@ use EveDev\Seat\IndusPlanner\Domain\ReactionFormula;
 use EveDev\Seat\IndusPlanner\Domain\TypeInfo;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Static data read from the SDE loaded by SeAT: blueprints, formulas, rigs,
@@ -32,6 +33,9 @@ class SdeCatalog implements TypeInfo
     private array $extraTypes = [];
 
     private ?array $groupNames = null;
+
+    /** @var array<int,int>|null maximum runs of one copy, by product */
+    private ?array $runsLimits = null;
 
     // -----------------------------------------------------------------
     // Catalog
@@ -101,6 +105,53 @@ class SdeCatalog implements TypeInfo
         );
 
         return ['blueprints' => $blueprints, 'formulas' => $formulas, 'types' => $types];
+    }
+
+    /**
+     * Maximum runs of one blueprint copy (or reaction job) for a product,
+     * from the SDE `industryBlueprints` table; null when unknown.
+     */
+    public function runsLimit(int $productId): ?int
+    {
+        return $this->runsLimits()[$productId] ?? null;
+    }
+
+    /** @return array<int,int> */
+    private function runsLimits(): array
+    {
+        if ($this->runsLimits !== null)
+            return $this->runsLimits;
+
+        // Table imported with the SDE: not cached while it is missing, so
+        // that the limits appear right after `eve:update:sde`.
+        if (! Schema::hasTable('industryBlueprints'))
+            return $this->runsLimits = [];
+
+        return $this->runsLimits = Cache::remember('indus-planner:runs-limits:v1', config('indus-planner.catalog_ttl'), function () {
+            $byBlueprint = DB::table('industryBlueprints')->where('maxProductionLimit', '>', 0)->pluck('maxProductionLimit', 'typeID');
+            $limits = [];
+            foreach ($this->blueprints() as $productId => $blueprint) {
+                if (isset($byBlueprint[$blueprint->blueprintTypeId]))
+                    $limits[$productId] = (int) $byBlueprint[$blueprint->blueprintTypeId];
+            }
+            foreach ($this->formulas() as $productId => $formula) {
+                if (! isset($limits[$productId]) && isset($byBlueprint[$formula->formulaTypeId]))
+                    $limits[$productId] = (int) $byBlueprint[$formula->formulaTypeId];
+            }
+
+            $factionShips = DB::table('invMetaTypes')
+                ->join('invTypes', 'invTypes.typeID', '=', 'invMetaTypes.typeID')
+                ->join('invGroups', 'invGroups.groupID', '=', 'invTypes.groupID')
+                ->where('invMetaTypes.metaGroupID', Constants::META_GROUP_FACTION)
+                ->where('invGroups.categoryID', Constants::CATEGORY_SHIP)
+                ->pluck('invMetaTypes.typeID');
+            foreach ($factionShips as $typeId) {
+                if (isset($limits[(int) $typeId]))
+                    $limits[(int) $typeId] = 1;
+            }
+
+            return $limits;
+        });
     }
 
     /** @return array<int, ManufacturingBlueprint> */

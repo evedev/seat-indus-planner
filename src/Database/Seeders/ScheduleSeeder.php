@@ -34,6 +34,15 @@ class ScheduleSeeder extends AbstractScheduleSeeder
                 'ping_before' => null,
                 'ping_after' => null,
             ],
+            [
+                // Player structure markets used as price source.
+                'command' => 'indus-planner:refresh-markets',
+                'expression' => '27 * * * *',
+                'allow_overlap' => false,
+                'allow_maintenance' => false,
+                'ping_before' => null,
+                'ping_after' => null,
+            ],
         ];
     }
 

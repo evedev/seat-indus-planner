@@ -30,6 +30,7 @@ final class TreeItem
         public string $productCategory = '',
         public int $timeSeconds = 0,
         public string $structureName = '',
+        public int $runsPerJob = 0, // runs of a full job (0: a single job)
     ) {
     }
 
@@ -62,6 +63,7 @@ final class TreeItem
             'product_category' => $this->productCategory,
             'time_seconds' => $this->timeSeconds,
             'structure_name' => $this->structureName,
+            'runs_per_job' => $this->runsPerJob,
         ];
     }
 
@@ -84,6 +86,7 @@ final class TreeItem
             productCategory: (string) ($data['product_category'] ?? ''),
             timeSeconds: (int) ($data['time_seconds'] ?? 0),
             structureName: (string) ($data['structure_name'] ?? ''),
+            runsPerJob: (int) ($data['runs_per_job'] ?? 0),
         );
     }
 }

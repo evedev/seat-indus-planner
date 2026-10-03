@@ -91,7 +91,7 @@
           ]) }}">
             <thead>
               <tr>
-                <th class="text-center" style="width:60px" data-sort-col="use" data-column="use"><span class="indus-th-label">{{ trans('indus-planner::ui.use') }}</span>{!! $filterButton('use', 'list', [['used', trans('indus-planner::ui.filter_used')], ['unused', trans('indus-planner::ui.filter_unused')]]) !!}</th>
+                <th class="text-center" style="width:60px" data-sort-col="use" data-column="use"><input type="checkbox" class="indus-check-all" title="{{ trans('indus-planner::ui.check_all_shown') }}" aria-label="{{ trans('indus-planner::ui.check_all_shown') }}"><span class="indus-th-label">{{ trans('indus-planner::ui.use') }}</span>{!! $filterButton('use', 'list', [['used', trans('indus-planner::ui.filter_used')], ['unused', trans('indus-planner::ui.filter_unused')]]) !!}</th>
                 <th style="width:40px" data-column="icon"></th>
                 <th data-sort-col="name"><span class="indus-th-label">{{ trans('indus-planner::ui.name') }}</span>{!! $filterButton('name', 'text') !!}</th>
                 <th data-sort-col="type" data-column="type"><span class="indus-th-label">{{ trans('indus-planner::ui.type') }}</span>{!! $filterButton('type') !!}</th>
@@ -190,6 +190,82 @@
           @method('DELETE')
         </form>
       @endforeach
+    @endif
+  </div>
+
+  {{-- ================================================== Price markets --}}
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ trans('indus-planner::ui.price_markets') }} <i class="fas fa-question-circle text-muted indus-help" data-placement="right" title="{{ trans('indus-planner::ui.price_markets_help') }}"></i></h3>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0 indus-markets">
+        <thead>
+          <tr>
+            <th>{{ trans('indus-planner::ui.market_col_name') }}</th>
+            <th>{{ trans('indus-planner::ui.system') }}</th>
+            <th class="text-right">{{ trans('indus-planner::ui.market_col_items') }}</th>
+            <th>{{ trans('indus-planner::ui.market_col_refresh') }}</th>
+            <th>{{ trans('indus-planner::ui.market_col_status') }}</th>
+            @if ($canManage)<th></th>@endif
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Jita</strong></td>
+            <td>Jita</td>
+            <td class="text-right">—</td>
+            <td>{{ trans('indus-planner::ui.market_jita_source') }}</td>
+            <td><span class="badge badge-success">{{ trans('indus-planner::ui.market_ok') }}</span></td>
+            @if ($canManage)<td></td>@endif
+          </tr>
+          @foreach ($markets as $market)
+            <tr>
+              <td><strong>{{ $market->name }}</strong></td>
+              <td>{{ $marketSystems[$market->solar_system_id] ?? '—' }}</td>
+              <td class="text-right">{{ $market->types_count ? number_format($market->types_count, 0, trans('indus-planner::ui.decimal_point'), trans('indus-planner::ui.thousands_sep')) : '—' }}</td>
+              <td>{{ $market->refreshed_at ? $market->refreshed_at->diffForHumans() : '—' }}</td>
+              <td>
+                @if ($market->last_error)
+                  <span class="badge badge-danger" title="{{ $market->last_error }}">{{ trans('indus-planner::ui.market_error') }}</span>
+                @elseif (! $market->refreshed_at)
+                  <span class="badge badge-secondary">{{ trans('indus-planner::ui.market_loading') }}</span>
+                @else
+                  <span class="badge badge-success">{{ trans('indus-planner::ui.market_ok') }}</span>
+                @endif
+              </td>
+              @if ($canManage)
+                <td class="text-right text-nowrap">
+                  <form action="{{ route('indus-planner.markets.refresh', $market) }}" method="post" class="d-inline">
+                    @csrf
+                    <button type="submit" class="btn btn-xs btn-default" title="{{ trans('indus-planner::ui.market_refresh') }}"><i class="fas fa-sync"></i></button>
+                  </form>
+                  <form action="{{ route('indus-planner.markets.destroy', $market) }}" method="post" class="d-inline"
+                        onsubmit="return confirm(@js(trans('indus-planner::ui.market_delete_confirm', ['name' => $market->name])));">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="btn btn-xs btn-danger" title="{{ trans('indus-planner::ui.delete') }}"><i class="fas fa-trash"></i></button>
+                  </form>
+                </td>
+              @endif
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+    @if ($canManage)
+      <div class="card-footer">
+        <form action="{{ route('indus-planner.markets.store') }}" method="post" class="d-flex align-items-center" id="indus-market-form">
+          @csrf
+          <div class="position-relative mr-2">
+            <input type="search" id="indus-market-search" class="form-control form-control-sm" autocomplete="off" style="width: 380px"
+                   data-url="{{ route('indus-planner.api.market-structures') }}" placeholder="{{ trans('indus-planner::ui.market_search_placeholder') }}">
+            <div id="indus-market-suggestions" class="list-group indus-suggestions"></div>
+          </div>
+          <input type="hidden" name="structure_id" id="indus-market-structure">
+          <button type="submit" class="btn btn-sm btn-primary" id="indus-market-add" disabled><i class="fas fa-plus"></i> {{ trans('indus-planner::ui.market_add') }}</button>
+        </form>
+      </div>
     @endif
   </div>
 

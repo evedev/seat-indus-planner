@@ -188,11 +188,12 @@ class AssetService
             $te = (int) $row->time_efficiency;
             // quantity: -1 original, -2 copy, > 0 stack of originals.
             if ((int) $row->quantity === -2) {
-                $bpc = $owned[$typeId]['bpc'] ?? ['me' => $me, 'te' => $te, 'count' => 0, 'runs' => 0];
+                $bpc = $owned[$typeId]['bpc'] ?? ['me' => $me, 'te' => $te, 'count' => 0, 'runs' => 0, 'max_runs' => 0];
                 if ([$me, $te] > [$bpc['me'], $bpc['te']])
                     [$bpc['me'], $bpc['te']] = [$me, $te];
                 $bpc['count']++;
                 $bpc['runs'] += max(0, (int) $row->runs);
+                $bpc['max_runs'] = max($bpc['max_runs'], (int) $row->runs);
                 $owned[$typeId]['bpc'] = $bpc;
             } else {
                 $bpo = $owned[$typeId]['bpo'] ?? ['me' => $me, 'te' => $te, 'count' => 0];

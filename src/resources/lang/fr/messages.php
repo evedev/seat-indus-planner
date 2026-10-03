@@ -20,4 +20,8 @@ return [
     'sync_done' => 'Synchronisation : :created structure(s) créée(s), :updated mise(s) à jour, :deleted supprimée(s).',
     'system_required' => 'Choisis un système dans la liste proposée.',
     'system_unknown' => 'Système inconnu : choisis-le dans la liste proposée.',
+    'export_invalid' => "Le plan n'a pas pu être exporté : contenu inattendu.",
+    'market_added' => ':name ajouté : ses ordres sont en cours de téléchargement.',
+    'market_refresh_queued' => 'Rafraîchissement de :name lancé.',
+    'market_deleted' => ':name retiré.',
 ];

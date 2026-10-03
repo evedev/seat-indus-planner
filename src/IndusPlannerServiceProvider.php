@@ -8,6 +8,7 @@
 
 namespace EveDev\Seat\IndusPlanner;
 
+use EveDev\Seat\IndusPlanner\Console\RefreshMarketsCommand;
 use EveDev\Seat\IndusPlanner\Console\SyncStructuresCommand;
 use EveDev\Seat\IndusPlanner\Console\UpdateCostIndicesCommand;
 use EveDev\Seat\IndusPlanner\Database\Seeders\ScheduleSeeder;
@@ -24,12 +25,14 @@ class IndusPlannerServiceProvider extends AbstractSeatPlugin
 
         $this->registerPermissions(__DIR__ . '/Config/permissions.php', 'indus-planner');
 
-        // SDE tables missing from SeAT's default set: blueprints and
-        // reaction formulas. Loaded by `php artisan eve:update:sde`.
+        // SDE tables missing from SeAT's default set: blueprints, reaction
+        // formulas and their maximum runs per copy. Loaded by
+        // `php artisan eve:update:sde`.
         $this->registerSdeTables([
             'industryActivity',
             'industryActivityMaterials',
             'industryActivityProducts',
+            'industryBlueprints',
         ]);
 
         $this->registerDatabaseSeeders(ScheduleSeeder::class);
@@ -49,6 +52,7 @@ class IndusPlannerServiceProvider extends AbstractSeatPlugin
         if ($this->app->runningInConsole()) {
             $this->commands([
                 SyncStructuresCommand::class,
+                RefreshMarketsCommand::class,
                 UpdateCostIndicesCommand::class,
             ]);
         }

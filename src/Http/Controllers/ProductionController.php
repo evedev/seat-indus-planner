@@ -8,6 +8,7 @@
 
 namespace EveDev\Seat\IndusPlanner\Http\Controllers;
 
+use EveDev\Seat\IndusPlanner\Services\MarketCatalog;
 use EveDev\Seat\IndusPlanner\Services\Planner;
 use EveDev\Seat\IndusPlanner\Services\SdeCatalog;
 use EveDev\Seat\IndusPlanner\Services\UserContext;
@@ -16,9 +17,11 @@ use Illuminate\Routing\Controller;
 
 class ProductionController extends Controller
 {
-    public function index(UserContext $context, Planner $planner)
+    public function index(UserContext $context, Planner $planner, MarketCatalog $markets)
     {
         return view('indus-planner::production', [
+            'markets' => $markets->options(),
+            'market' => $markets->currentValue(),
             'characters' => $context->characters(),
             'bestCharacter' => $planner->bestCharacterForIndustry(),
             'hasStructures' => $planner->setup()->count() > 0,
@@ -56,9 +59,12 @@ class ProductionController extends Controller
         return response()->json($owned);
     }
 
-    public function compute(Request $request, Planner $planner)
+    public function compute(Request $request, Planner $planner, MarketCatalog $markets)
     {
+        $market = $markets->resolve($request->input('market'));
+        $markets->remember($market);
         $payload = $planner->production([
+            'market' => $market,
             'character_id' => (int) $request->input('character_id') ?: null,
             'type_id' => (int) $request->input('type_id'),
             'qty' => (int) $request->input('qty', 1),
@@ -74,8 +80,8 @@ class ProductionController extends Controller
             : response()->json($payload);
     }
 
-    public function plan(Request $request, Planner $planner)
+    public function plan(Request $request, Planner $planner, MarketCatalog $markets)
     {
-        return response()->json($planner->plan((array) $request->input('entries', [])));
+        return response()->json($planner->plan((array) $request->input('entries', []), $markets->resolve($request->input('market'))));
     }
 }

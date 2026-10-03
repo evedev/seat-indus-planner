@@ -156,6 +156,11 @@
 
 .indus-card-body { flex: 1; min-width: 0; }
 
+.indus-card-head { display: flex; align-items: baseline; gap: 6px; }
+.indus-card-head .indus-card-name { flex: 1; min-width: 0; }
+.indus-card-time { flex: none; color: #9aa6b8; font-size: .72rem; white-space: nowrap; }
+.indus-card-time i { margin-right: 2px; }
+
 .indus-card-name {
   font-weight: bold;
   font-size: .85rem;
@@ -268,10 +273,10 @@
 }
 
 /* Margin: green border and value when positive, red when negative. */
-.indus-tile.pos { border: 2px solid #28a745; }
-.indus-tile.pos .indus-tile-value { color: #1a7a3a; }
-.indus-tile.neg { border: 2px solid #dc3545; }
-.indus-tile.neg .indus-tile-value { color: #aa1111; }
+.indus-tile-split { display: flex; justify-content: space-between; gap: 1rem; }
+.indus-tile-split > div { min-width: 0; }
+.indus-tile .pos .indus-tile-value { color: #1a7a3a; }
+.indus-tile .neg .indus-tile-value { color: #aa1111; }
 
 /* Tree / Production plan tabs (Reactions, Production, saved plans). */
 .indus-tool > .card-header .nav-tabs .nav-link { font-size: 1.2rem; font-weight: 700; }
@@ -346,6 +351,7 @@
 .indus-ms-menu .indus-ms-max { display: flex; align-items: center; gap: .4rem; padding: .3rem .6rem; }
 .indus-ms-menu .indus-ms-max input { width: 90px; }
 .indus-ms-menu .indus-ms-max input.indus-ms-text { width: 220px; }
+.indus-structures .indus-check-all { width: 18px; height: 18px; margin: 0 .35rem 0 0; vertical-align: middle; cursor: pointer; }
 .indus-structures td[data-column="use"] input[type="checkbox"] { width: 18px; height: 18px; margin: 0; vertical-align: middle; cursor: pointer; }
 .indus-help { font-size: .9rem; cursor: help; margin-left: .25rem; }
 .indus-help-tooltip .tooltip-inner { max-width: 420px; text-align: left; }
@@ -354,6 +360,18 @@
 .indus-ms-menu label { display: flex; align-items: center; gap: .45rem; margin: 0; padding: .2rem .8rem; font-weight: normal; cursor: pointer; white-space: nowrap; }
 .indus-ms-menu label:hover { background: rgba(128, 128, 128, .15); }
 .indus-structures tbody tr.odd { background-color: rgba(128, 128, 128, .08); }
+
+/* Column groups: translucent tints, so that they add up with the row stripes
+   and suit the dark theme; the sticky header keeps an opaque base. */
+.indus-structures { --grp-loc: 85, 136, 221; --grp-cost: 47, 158, 92; --grp-rig: 217, 130, 43; --head-base: #fff; }
+.dark-mode .indus-structures { --head-base: #343a40; }
+.indus-structures td.grp-loc { background-color: rgba(var(--grp-loc), .07); }
+.indus-structures td.grp-cost { background-color: rgba(var(--grp-cost), .07); }
+.indus-structures td.grp-rig { background-color: rgba(var(--grp-rig), .08); }
+.indus-structures thead th.grp-loc { background: linear-gradient(rgba(var(--grp-loc), .16), rgba(var(--grp-loc), .16)), var(--head-base); box-shadow: inset 0 -2px 0 rgb(var(--grp-loc)); }
+.indus-structures thead th.grp-cost { background: linear-gradient(rgba(var(--grp-cost), .16), rgba(var(--grp-cost), .16)), var(--head-base); box-shadow: inset 0 -2px 0 rgb(var(--grp-cost)); }
+.indus-structures thead th.grp-rig { background: linear-gradient(rgba(var(--grp-rig), .18), rgba(var(--grp-rig), .18)), var(--head-base); box-shadow: inset 0 -2px 0 rgb(var(--grp-rig)); }
+.indus-structures .grp-start { border-left: 2px solid rgba(128, 128, 128, .35); }
 
 .indus-sources { display: flex; flex-wrap: wrap; align-items: stretch; gap: 1rem 3rem; }
 .indus-sources-section { display: flex; flex-direction: column; }
@@ -443,3 +461,30 @@
 .indus-tip-bar { height: 6px; background: #1f2330; border-radius: 3px; overflow: hidden; margin-top: .2rem; }
 .indus-tip-bar i { display: block; height: 100%; background: #e0a43b; }
 .indus-tip-bar.full i { background: #5dcaa5; }
+.indus-tip-fallback { color: #e0a43b; border: 1px solid #e0a43b; border-radius: 3px; padding: 0 .25rem; margin-left: .3rem; font-size: .68rem; font-weight: 400; }
+.indus-tip-note { color: #e0a43b; font-size: .72rem; margin-top: .2rem; }
+.indus-tip-note.muted { color: #8e97ab; margin-top: 0; }
+.indus-tip-row .indus-dot { margin-right: .4rem; }
+.indus-tip-row.pos b { color: #5dcaa5; }
+.indus-tip-row.neg b { color: #f08a8a; }
+.indus-price-fallback { color: #d39e00; }
+
+/* ----------------------------------------------- Parameters: tiles */
+
+.indus-param-tiles { display: grid; gap: .6rem; align-items: stretch; }
+.indus-param-tiles.production { grid-template-columns: 1.1fr 2fr 1.6fr 1.5fr 1fr; }
+.indus-param-tiles.reactions { grid-template-columns: 1fr 4fr 1.4fr; }
+@media (max-width: 1199px) {
+  .indus-param-tiles.production, .indus-param-tiles.reactions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.indus-param-tile { min-width: 0; padding: .4rem .6rem .55rem; border-radius: 6px; border-top: 3px solid var(--tile, #adb5bd);
+  background: rgba(128, 128, 128, .07); }
+.indus-param-title { font-size: .75rem; font-weight: 600; margin-bottom: .35rem; }
+.indus-param-tile label { margin: 0; font-size: .78rem; font-weight: normal; color: #6c757d; white-space: nowrap; }
+.indus-param-tile .custom-control-label { color: inherit; }
+.indus-param-kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .3rem .5rem; align-items: center; }
+.indus-param-kv .indus-param-number { width: 7rem; }
+.indus-param-bp { display: grid; grid-template-columns: auto 4rem minmax(0, 1fr); gap: .3rem .5rem; align-items: center; }
+.indus-param-bp #p-blueprint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.indus-param-reaction { display: grid; grid-template-columns: auto minmax(0, 1.3fr) auto minmax(0, 1.3fr) auto minmax(0, .8fr); gap: .3rem .5rem; align-items: center; }
+.indus-param-reaction .custom-control { white-space: nowrap; }

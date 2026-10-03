@@ -97,6 +97,7 @@ final class Plan
                     'rank' => $entry['rank'],
                     'activity' => $item->producedByReaction ? self::ACTIVITY_REACTION : self::ACTIVITY_MANUFACTURING,
                     'runs' => $item->runs,
+                    'runs_per_job' => $item->runsPerJob ?: $item->runs,
                     'seconds' => $item->timeSeconds,
                     'qty_produced' => $item->qtyProduced,
                     'qty_needed' => $item->qtyTotal,
@@ -137,7 +138,7 @@ final class Plan
      * Materials to buy: nodes in "buy" mode (final product excluded).
      *
      * @param  array<int, array{item: TreeItem, rank: int, mode: string}>  $entries
-     * @param  array<int, array>  $prices  {type_id: {jita_sell, volume, ...}}
+     * @param  array<int, array>  $prices  {type_id: {sell, sell_fallback, volume, ...}}
      * @param  array<int,int>|null  $stock  {type_id: owned quantity}
      * @param  callable(int): ?string|null  $groupNameOf
      * @param  array<int, array<int, array>>|null  $stockPlaces  {type_id: [StockPlace]}
@@ -169,7 +170,8 @@ final class Plan
                 'name' => $item->name,
                 'quantity' => $item->qtyTotal,
                 'unit_volume' => $item->volume ?: (float) ($market['volume'] ?? 0.0),
-                'unit_price' => (float) ($market['jita_sell'] ?? 0.0),
+                'unit_price' => (float) ($market['sell'] ?? 0.0),
+                'price_fallback' => (bool) ($market['sell_fallback'] ?? false),
                 'in_stock' => (int) ($stock[$item->typeId] ?? 0),
                 'group_id' => $item->groupId,
                 'group_name' => $groupName,

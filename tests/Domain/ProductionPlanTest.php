@@ -248,9 +248,18 @@ class ProductionPlanTest extends TestCase
     public function test_prices_and_volumes_feed_the_totals(): void
     {
         [, $tree] = $this->simulate();
-        $lines = array_column(Plan::purchases($this->entriesOf($tree), [self::RAW => ['jita_sell' => 5.0, 'volume' => 0.01]]), null, 'type_id');
+        $lines = array_column(Plan::purchases($this->entriesOf($tree), [self::RAW => ['sell' => 5.0, 'volume' => 0.01]]), null, 'type_id');
         $this->assertSame(5_000.0, $lines[self::RAW]['total_price']);
         $this->assertEqualsWithDelta(10.0, $lines[self::RAW]['total_volume'], 1e-9);
+        $this->assertFalse($lines[self::RAW]['price_fallback']);
+    }
+
+    public function test_jita_fallback_price_is_flagged(): void
+    {
+        [, $tree] = $this->simulate();
+        $lines = array_column(Plan::purchases($this->entriesOf($tree), [self::RAW => ['sell' => 5.0, 'sell_fallback' => true]]), null, 'type_id');
+        $this->assertTrue($lines[self::RAW]['price_fallback']);
+        $this->assertSame(5.0, $lines[self::RAW]['unit_price']);
     }
 
     // -------------------------------------------------- Purchase families

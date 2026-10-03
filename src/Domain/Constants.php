@@ -182,6 +182,11 @@ final class Constants
     public const ACTIVITY_ID_MANUFACTURING = 1;
     public const ACTIVITY_ID_REACTION = 11;
 
+    // Faction (navy and pirate) ships: their blueprint copies only exist with
+    // one run, whatever the SDE limit says.
+    public const META_GROUP_FACTION = 4;
+    public const CATEGORY_SHIP = 6;
+
     /**
      * Converts an EVE security status into a space class.
      */

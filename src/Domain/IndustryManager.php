@@ -24,11 +24,15 @@ final class IndustryManager
     /** @var callable(int): (array{me:int,te:int}|null)|null */
     private $blueprintEfficiency;
 
+    /** @var callable(int): ?int|null runs of one job (one blueprint copy) for a product */
+    private $runsPerJob;
+
     /**
      * @param  array<int, ManufacturingBlueprint>  $blueprints  indexed by product
      * @param  array<int, ReactionFormula>  $formulas  indexed by product
      * @param  callable(int): (array{me:int,te:int}|null)|null  $blueprintEfficiency
      *                                                                               ME/TE of the owned blueprint for a manufactured product
+     * @param  callable(int): ?int|null  $runsPerJob  runs of one job for a product, null: no limit
      */
     public function __construct(
         private TypeInfo $types,
@@ -37,8 +41,10 @@ final class IndustryManager
         public array $formulas,
         private bool $componentBonuses = false,
         ?callable $blueprintEfficiency = null,
+        ?callable $runsPerJob = null,
     ) {
         $this->blueprintEfficiency = $blueprintEfficiency;
+        $this->runsPerJob = $runsPerJob;
     }
 
     // -----------------------------------------------------------------
@@ -153,6 +159,7 @@ final class IndustryManager
             productCategory: $result->category(),
             timeSeconds: $result->timeTotalSeconds,
             structureName: $result->structure?->name ?? '',
+            runsPerJob: $result->runsPerJob,
         );
 
         $rank1 = [];
@@ -248,6 +255,10 @@ final class IndustryManager
         if (! $this->componentBonuses)
             return $base;
 
+        // The parent runs are split into jobs: the ME rounding applies job
+        // by job.
+        $runsPerJob = $parent->runsPerJob;
+
         $blueprint = $this->blueprints[$parentId] ?? null;
         if ($blueprint !== null) {
             $meLevel = $this->efficiencyOf($parentId)['me'] ?? 0;
@@ -255,7 +266,7 @@ final class IndustryManager
             $multiplier = (1.0 - $meLevel / 100.0)
                 * ($structure?->effectiveMeMultiplier($blueprint->productCategory) ?? 1.0);
 
-            return max(1, (int) ceil($base * $multiplier));
+            return Calculator::materialQuantity($material->quantity, $parent->runs, $runsPerJob, $multiplier);
         }
 
         $formula = $this->formulas[$parentId] ?? null;
@@ -263,7 +274,7 @@ final class IndustryManager
             $structure = $this->structureFor($parentId, $formula->category, $overrides);
             $multiplier = $structure?->effectiveMeMultiplier($formula->category) ?? 1.0;
 
-            return (int) ceil($base * $multiplier);
+            return Calculator::materialQuantity($material->quantity, $parent->runs, $runsPerJob, $multiplier);
         }
 
         return $base;
@@ -320,7 +331,18 @@ final class IndustryManager
             productCategory: $category,
             timeSeconds: $seconds,
             structureName: $structureName,
+            runsPerJob: $this->runsPerJobOf($typeId, $runs),
         );
+    }
+
+    /** Runs of a full job of the item: its copy runs, capped by the runs needed. */
+    private function runsPerJobOf(int $typeId, int $runs): int
+    {
+        if ($runs <= 0)
+            return 0;
+        $limit = $this->runsPerJob ? ($this->runsPerJob)($typeId) : null;
+
+        return Calculator::jobBatches($runs, (int) ($limit ?? 0))[1];
     }
 
     /**
@@ -381,6 +403,7 @@ final class IndustryManager
             'productCategory' => $category,
             'timeSeconds' => $seconds,
             'structureName' => $structureName,
+            'runsPerJob' => $this->runsPerJobOf($existing->typeId, $runs),
         ]);
     }
 

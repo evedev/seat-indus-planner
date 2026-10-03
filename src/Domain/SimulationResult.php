@@ -36,6 +36,7 @@ final class SimulationResult
         public float $totalJobCost = 0.0,
         public int $meLevel = 0,
         public int $teLevel = 0,
+        public int $runsPerJob = 0, // runs of a full job (0: unknown, a single job)
     ) {
     }
 

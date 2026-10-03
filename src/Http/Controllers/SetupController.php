@@ -13,6 +13,7 @@ use EveDev\Seat\IndusPlanner\Services\AssetService;
 use EveDev\Seat\IndusPlanner\Services\SdeCatalog;
 use EveDev\Seat\IndusPlanner\Services\StructureService;
 use EveDev\Seat\IndusPlanner\Services\UserContext;
+use EveDev\Seat\IndusPlanner\Models\Market;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,7 @@ class SetupController extends Controller
 
         $corporations = $context->corporations();
         $allowed = $context->allowedDivisions();
+        $markets = Market::orderBy('name')->get();
 
         return view('indus-planner::setup', [
             'structures' => $visible,
@@ -46,6 +48,8 @@ class SetupController extends Controller
             'divisionNames' => $context->divisionNames(array_keys($corporations)),
             'sources' => $assets->sources(),
             'canManage' => Gate::allows('indus-planner.manage'),
+            'markets' => $markets,
+            'marketSystems' => DB::table('solar_systems')->whereIn('system_id', $markets->pluck('solar_system_id')->filter())->pluck('name', 'system_id'),
         ]);
     }
 

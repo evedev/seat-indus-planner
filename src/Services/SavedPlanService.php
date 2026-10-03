@@ -27,7 +27,7 @@ class SavedPlanService
     // ESI job statuses that produce nothing.
     private const IGNORED_STATUSES = ['cancelled', 'reverted'];
 
-    public function __construct(private UserContext $context, private Planner $planner)
+    public function __construct(private UserContext $context, private Planner $planner, private MarketCatalog $markets)
     {
     }
 
@@ -49,7 +49,7 @@ class SavedPlanService
      */
     public function create(string $name, string $tool, array $params, array $payload, array $entries, array $userModes): SavedPlan
     {
-        $plan = $this->planner->plan($entries);
+        $plan = $this->planner->plan($entries, $this->markets->resolve($params['market'] ?? null));
         $result = $payload['result'] ?? [];
 
         return SavedPlan::create([
@@ -77,7 +77,7 @@ class SavedPlanService
      */
     public function refresh(SavedPlan $plan): SavedPlan
     {
-        $result = $this->planner->plan($plan->entries);
+        $result = $this->planner->plan($plan->entries, $this->markets->resolve($plan->params['market'] ?? null));
         $fresh = collect($result['purchases'])->keyBy('type_id');
 
         // Targets (quantity to buy when the plan was saved) stay frozen; only
